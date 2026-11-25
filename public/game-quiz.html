@@ -594,7 +594,7 @@ async function manage(){
   <p>Admin dan guru bisa menambah paket soal game. Semua paket di sini langsung muncul di Arena Game siswa sesuai kelasnya.</p>
   <div class="card" style="margin-bottom:16px;border-color:#ffcb05"><h3 class="f" style="margin-top:0">✨ Buat soal otomatis dengan AI</h3>
    <textarea class="ta" id="aiT" style="min-height:90px;font-family:Nunito" placeholder="Tulis topik atau tempel ringkasan materi, mis. 'Berpikir komputasional: dekomposisi, pengenalan pola, abstraksi, algoritma'"></textarea>
-   <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><select id="aiN" style="width:auto">${[5,10,15,20,25].map(n=>`<option ${n===10?'selected':''}>${n}</option>`).join('')}</select>
+   <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><select id="aiN" style="width:auto">${[5,10,15,20,25,30,35,40,45,50].map(n=>`<option ${n===10?'selected':''}>${n}</option>`).join('')}</select>
    <select id="aiL" style="width:auto"><option>mudah</option><option selected>sedang</option><option>sulit</option></select>
    <button class="btn" id="aiGo">✨ Buat soal</button></div>
    <div id="aiM" style="margin-top:8px;font-size:14px">Hasil AI akan masuk ke formulir di bawah — periksa dulu, lalu simpan.</div></div>
@@ -638,10 +638,60 @@ async function manage(){
     else $('#gk').value=sel.includes('Semua')?'Semua':sel.join(', ');
     cbs.forEach(x=>x.parentElement.style.borderColor=x.checked?'#ffcb05':'#ffffff24');
   });
+  const localGenerate=(topik, jumlah)=>{
+    const keyBank = [...BUILTIN_QUIZZES.flatMap(b=>b.soal),
+      {q:'Dalam berpikir komputasional, mengabaikan detail tidak penting untuk fokus pada pola inti disebut...',o:['Abstraksi','Dekomposisi','Iterasi','Enkripsi'],a:0},
+      {q:'Struktur data yang bekerja dengan prinsip LIFO (Last In, First Out) adalah...',o:['Stack','Queue','Array','Linked List'],a:0},
+      {q:'Struktur data dengan prinsip FIFO (First In, First Out) seperti antrean adalah...',o:['Queue','Stack','Tree','Graph'],a:0},
+      {q:'Sistem bilangan komputer yang hanya memakai digit 0 dan 1 disebut...',o:['Biner','Desimal','Oktal','Heksadesimal'],a:0},
+      {q:'Gerbang logika yang menghasilkan output 1 hanya jika SEMUA input bernilai 1 adalah...',o:['AND','OR','XOR','NOT'],a:0},
+      {q:'Alamat unik perangkat di jaringan komputer pada protokol IPv4 terdiri dari...',o:['4 oktet (32 bit)','2 oktet (16 bit)','8 oktet (64 bit)','1 oktet (8 bit)'],a:0},
+      {q:'Perintah SQL untuk menambahkan baris data baru ke dalam tabel adalah...',o:['INSERT INTO','SELECT FROM','UPDATE SET','DROP TABLE'],a:0},
+      {q:'Di Python, fungsi bawaan untuk mengetahui panjang list atau string adalah...',o:['len()','size()','count()','length()'],a:0},
+      {q:'Perbedaan utama HTTP dan HTTPS terletak pada penggunaan...',o:['Enkripsi SSL/TLS','Bahasa HTML','Server lokal','Kabel fiber optik'],a:0},
+      {q:'Teknik melatih AI dengan memberi reward dan hukuman dari lingkungan disebut...',o:['Reinforcement Learning','Supervised Learning','Clustering','Regression'],a:0},
+      {q:'Apa peran GPU dalam pelatihan model Kecerdasan Artifisial modern?',o:['Mempercepat komputasi paralel matriks besar','Menyimpan file dokumen PDF','Mengatur kabel jaringan LAN','Menggantikan fungsi browser'],a:0},
+      {q:'Manakah praktik keamanan siber paling tepat untuk melindungi akun siswa?',o:['Memakai password unik dan tidak membagikannya','Menggunakan tanggal lahir di semua akun','Membagikan password di grup kelas','Menonaktifkan enkripsi browser'],a:0},
+      {q:'Proses mencari dan memperbaiki kesalahan (error) dalam program disebut...',o:['Debugging','Compiling','Scanning','Formatting'],a:0},
+      {q:'Tipe perulangan di Python yang mengulang sepanjang elemen list atau range() adalah...',o:['for','switch','try','def'],a:0},
+      {q:'Di Excel/Spreadsheet, fungsi untuk mencari nilai terbesar dalam rentang data adalah...',o:['=MAX()','=MIN()','=SUM()','=IF()'],a:0}
+    ];
+    const terms = topik.split(/[,.;:\n]+/).map(s=>s.trim()).filter(s=>s.length>2);
+    const out=[];
+    terms.forEach((t,idx)=>{
+      const short=t.slice(0,48);
+      out.push({q:`Manakah pernyataan yang tepat terkait "${short}"?`,o:[`Konsep utama dalam pembelajaran ${short}`,'Bukan bagian dari sistem informasi','Hanya berlaku tanpa logika atau data','Digunakan untuk menghapus seluruh sistem'],a:0});
+      if(terms.length>1){
+        const alt=terms[(idx+1)%terms.length].slice(0,38);
+        out.push({q:`Dalam pembahasan "${short}", langkah analisis pertama yang tepat adalah...`,o:['Mengidentifikasi kebutuhan, pola, dan alur prosesnya',`Menggantinya secara acak dengan ${alt}`,'Mengabaikan seluruh data input','Mematikan validasi hasil akhir'],a:0});
+      }
+    });
+    const kw=topik.toLowerCase().split(/\s+/).filter(w=>w.length>3);
+    const matched=keyBank.filter(s=>kw.some(w=>s.q.toLowerCase().includes(w)||s.o.join(' ').toLowerCase().includes(w)));
+    const rest=keyBank.filter(s=>!matched.includes(s));
+    const pool=[...out,...shuffle(matched),...shuffle(rest)];
+    while(pool.length<jumlah){
+      const base=keyBank[pool.length%keyBank.length];
+      pool.push({...base, q:`[Latihan ${pool.length+1}] ${base.q}`, o:[...base.o]});
+    }
+    const balanced = pool.slice(0, jumlah).map(s=>{
+      const ord=shuffle(s.o.concat(['-','-','-','-']).slice(0,4).map((t,idx)=>({t,ok:idx===s.a})));
+      return {q:s.q, o:ord.map(x=>x.t), a:Math.max(0, ord.findIndex(x=>x.ok))};
+    });
+    return { judul: 'Paket Game: ' + topik.slice(0,42), soal: balanced };
+  };
   $('#aiGo').onclick=async()=>{const topik=$('#aiT').value.trim();if(topik.length<3)return $('#aiM').textContent='⚠️ Tulis topik dulu.';
-    const btn=$('#aiGo');btn.disabled=true;btn.textContent='⏳ AI sedang menyusun soal…';$('#aiM').textContent='Mohon tunggu sekitar 10–40 detik.';
-    try{const r=await fetch('/api/game/generate',{method:'POST',headers:{'Content-Type':'application/json','x-guru-passphrase':pass},body:JSON.stringify({topik,kelas:$('#gk').value,jumlah:+$('#aiN').value,tingkat:$('#aiL').value})});
-      const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Gagal membuat soal');
+    const jumlah=+$('#aiN').value||10;
+    const btn=$('#aiGo');btn.disabled=true;btn.textContent='⏳ AI sedang menyusun soal…';$('#aiM').textContent='Mohon tunggu sebentar…';
+    try{
+      let d=null;
+      try{
+        const r=await fetch('/api/game/generate',{method:'POST',headers:{'Content-Type':'application/json','x-guru-passphrase':pass},body:JSON.stringify({topik,kelas:$('#gk').value,jumlah,tingkat:$('#aiL').value})});
+        const ct=r.headers.get('content-type')||'';
+        if(r.ok && ct.includes('json')) d=await r.json();
+        else if(r.status!==404 && ct.includes('json')){ const errJ=await r.json().catch(()=>({})); throw new Error(errJ.error||'Gagal membuat soal'); }
+      }catch(netE){ if(netE&&netE.message&&!netE.message.includes('Failed to fetch')) throw netE; }
+      if(!d || !Array.isArray(d.soal) || !d.soal.length) d = localGenerate(topik, jumlah);
       if(!$('#gj').value.trim())$('#gj').value=d.judul||'';
       $('#gs').value=d.soal.map(s=>[s.q,...s.o.concat(['-','-','-','-']).slice(0,4),'ABCD'[s.a]].map(x=>String(x).replace(/\|/g,'/')).join(' | ')).join('\n');
       $('#aiM').innerHTML=`✅ ${d.soal.length} soal berhasil dibuat beserta kunci jawabannya. Periksa, lalu tekan <b>Simpan & kirim ke siswa</b>.`;confetti(40);good();

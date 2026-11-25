@@ -54,7 +54,7 @@ export const Route = createFileRoute("/api/game/generate")({
         };
         const topik = String(body.topik ?? "").trim().slice(0, 2000);
         if (topik.length < 3) return json({ error: "Topik/materi wajib diisi." }, 400);
-        const jumlah = Math.min(30, Math.max(5, Number(body.jumlah) || 10));
+        const jumlah = Math.min(50, Math.max(5, Number(body.jumlah) || 10));
         const kelas = String(body.kelas ?? "").slice(0, 20);
         const tingkat = String(body.tingkat ?? "sedang").slice(0, 20);
 
