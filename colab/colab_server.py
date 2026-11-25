@@ -3,6 +3,7 @@ Portal Belajar SMA NU Kaplongan — Backend & SQLite Database Server for Google 
 Persists all data (Materi, Tugas, LKPD, Quiz, Pengumuman, Submissions, Absensi, Akun, Video)
 into SQLite (optionally on Google Drive) and exposes a CORS-enabled FastAPI REST API.
 """
+import base64
 import hashlib
 import hmac
 import json
@@ -29,6 +30,10 @@ FILES_DIR.mkdir(parents=True, exist_ok=True)
 
 GURU_PASSPHRASE = os.environ.get("GURU_UPLOAD_PASSPHRASE", "guru-kaplongan")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin-kaplongan")
+TOKEN_SECRET = os.environ.get(
+    "PORTAL_TOKEN_SECRET",
+    hashlib.sha256(f"{ADMIN_PASSWORD}:{GURU_PASSPHRASE}:pb-kaplongan".encode("utf-8")).hexdigest(),
+)
 
 app = FastAPI(title="Portal Belajar Colab Database API", version="1.0.0")
 app.add_middleware(
@@ -104,6 +109,17 @@ def init_db() -> None:
                 path TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS live_rooms (
+                pin TEXT PRIMARY KEY,
+                host_name TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                kelas TEXT NOT NULL,
+                quiz_json TEXT NOT NULL,
+                status TEXT NOT NULL,
+                players_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
             """
         )
         # Seed default catalog if missing
@@ -140,15 +156,58 @@ def verify_pw(password: str, stored_hash: Optional[str]) -> bool:
     return hmac.compare_digest(dk.hex(), expected)
 
 
-def has_staff_access(given: str) -> bool:
-    if not given:
-        return False
-    return hmac.compare_digest(given, GURU_PASSPHRASE) or hmac.compare_digest(given, ADMIN_PASSWORD)
+def _b64u(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
 
 
-def require_staff(x_guru_passphrase: Optional[str]) -> None:
-    if not has_staff_access(x_guru_passphrase or ""):
-        raise HTTPException(status_code=401, detail="Passphrase guru / password admin salah.")
+def _b64u_dec(txt: str) -> bytes:
+    pad = "=" * (-len(txt) % 4)
+    return base64.urlsafe_b64decode(txt + pad)
+
+
+def create_session_token(role: str, subject: str, ttl_seconds: int = 60 * 60 * 24 * 7) -> tuple[str, int]:
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    exp_ts = now_ts + ttl_seconds
+    header = _b64u(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode("utf-8"))
+    payload = _b64u(json.dumps({"role": role, "sub": subject, "iat": now_ts, "exp": exp_ts}, separators=(",", ":")).encode("utf-8"))
+    signing_input = f"{header}.{payload}".encode("ascii")
+    sig = _b64u(hmac.new(TOKEN_SECRET.encode("utf-8"), signing_input, hashlib.sha256).digest())
+    return f"{header}.{payload}.{sig}", exp_ts
+
+
+def verify_session_token(token: str) -> Optional[dict[str, Any]]:
+    if not token or token.count(".") != 2:
+        return None
+    try:
+        header_b64, payload_b64, sig_b64 = token.split(".", 2)
+        expected_sig = _b64u(hmac.new(TOKEN_SECRET.encode("utf-8"), f"{header_b64}.{payload_b64}".encode("ascii"), hashlib.sha256).digest())
+        if not hmac.compare_digest(sig_b64, expected_sig):
+            return None
+        data = json.loads(_b64u_dec(payload_b64).decode("utf-8"))
+        if int(data.get("exp", 0)) < int(datetime.now(timezone.utc).timestamp()):
+            return None
+        return data
+    except Exception:
+        return None
+
+
+def extract_bearer(authorization: Optional[str]) -> str:
+    raw = str(authorization or "").strip()
+    if raw.lower().startswith("bearer "):
+        return raw[7:].strip()
+    return ""
+
+
+def has_staff_access(given: str, authorization: Optional[str] = "") -> bool:
+    if given and (hmac.compare_digest(given, GURU_PASSPHRASE) or hmac.compare_digest(given, ADMIN_PASSWORD)):
+        return True
+    tok = verify_session_token(extract_bearer(authorization))
+    return bool(tok and tok.get("role") in ("guru", "admin"))
+
+
+def require_staff(x_guru_passphrase: Optional[str], authorization: Optional[str] = "") -> None:
+    if not has_staff_access(x_guru_passphrase or "", authorization):
+        raise HTTPException(status_code=401, detail="Passphrase guru / password admin atau token sesi tidak valid.")
 
 
 def clean_submission(jenis: str, entry: dict[str, Any]) -> dict[str, Any]:
@@ -223,7 +282,9 @@ async def teacher_login(request: Request):
     pw = str(body.get("password") or "")
     if not has_staff_access(pw):
         return JSONResponse({"ok": False, "error": "Akun siswa tidak dapat masuk sebagai guru."}, status_code=401)
-    return {"ok": True}
+    role = "admin" if hmac.compare_digest(pw, ADMIN_PASSWORD) else "guru"
+    token, exp = create_session_token(role, role)
+    return {"ok": True, "role": role, "token": token, "expiresAt": exp}
 
 
 @app.post("/api/admin-login")
@@ -232,13 +293,22 @@ async def admin_login(request: Request):
     pw = str(body.get("password") or "")
     if not hmac.compare_digest(pw, ADMIN_PASSWORD):
         return JSONResponse({"ok": False, "error": "Password admin salah."}, status_code=401)
-    return {"ok": True}
+    token, exp = create_session_token("admin", "admin")
+    return {"ok": True, "role": "admin", "token": token, "expiresAt": exp}
 
 
 @app.get("/api/teacher-session")
-def teacher_session(x_guru_passphrase: Optional[str] = Header(default="")):
-    require_staff(x_guru_passphrase)
+def teacher_session(x_guru_passphrase: Optional[str] = Header(default=""), authorization: Optional[str] = Header(default="")):
+    require_staff(x_guru_passphrase, authorization)
     return {"ok": True}
+
+
+@app.get("/api/auth/verify")
+def verify_auth_token(authorization: Optional[str] = Header(default="")):
+    tok = verify_session_token(extract_bearer(authorization))
+    if not tok:
+        raise HTTPException(status_code=401, detail="Token sesi kedaluwarsa atau tidak valid.")
+    return {"ok": True, "role": tok.get("role"), "sub": tok.get("sub"), "expiresAt": tok.get("exp")}
 
 
 @app.post("/api/login")
@@ -255,8 +325,12 @@ async def student_login(request: Request):
         ts = int(datetime.now(timezone.utc).timestamp() * 1000)
         conn.execute("UPDATE accounts SET terakhir_masuk = ?, updated_at = ? WHERE nis = ?", (ts, now_iso(), nis))
         conn.commit()
+        token, exp = create_session_token("siswa", row["nis"])
         return {
             "ok": True,
+            "role": "siswa",
+            "token": token,
+            "expiresAt": exp,
             "account": {"nis": row["nis"], "nama": row["nama"], "kelas": row["kelas"], "terakhirMasuk": ts},
         }
 
@@ -267,8 +341,8 @@ def get_catalog():
 
 
 @app.post("/api/catalog")
-async def save_catalog(request: Request, x_guru_passphrase: Optional[str] = Header(default="")):
-    require_staff(x_guru_passphrase)
+async def save_catalog(request: Request, x_guru_passphrase: Optional[str] = Header(default=""), authorization: Optional[str] = Header(default="")):
+    require_staff(x_guru_passphrase, authorization)
     payload = await request.json()
     current = read_catalog_dict()
     expected_rev = payload.get("updatedAt")
@@ -299,8 +373,8 @@ def get_activity():
 
 
 @app.post("/api/activity")
-async def save_activity(request: Request, x_guru_passphrase: Optional[str] = Header(default="")):
-    require_staff(x_guru_passphrase)
+async def save_activity(request: Request, x_guru_passphrase: Optional[str] = Header(default=""), authorization: Optional[str] = Header(default="")):
+    require_staff(x_guru_passphrase, authorization)
     payload = await request.json()
     ts = now_iso()
     with get_conn() as conn:
@@ -386,8 +460,8 @@ async def submit_work(request: Request):
 
 
 @app.get("/api/accounts")
-def list_accounts(x_guru_passphrase: Optional[str] = Header(default="")):
-    require_staff(x_guru_passphrase)
+def list_accounts(x_guru_passphrase: Optional[str] = Header(default=""), authorization: Optional[str] = Header(default="")):
+    require_staff(x_guru_passphrase, authorization)
     with get_conn() as conn:
         rows = conn.execute("SELECT nis, nama, kelas, terakhir_masuk FROM accounts ORDER BY kelas, nama").fetchall()
     return {
@@ -399,8 +473,8 @@ def list_accounts(x_guru_passphrase: Optional[str] = Header(default="")):
 
 
 @app.post("/api/accounts")
-async def mutate_accounts(request: Request, x_guru_passphrase: Optional[str] = Header(default="")):
-    require_staff(x_guru_passphrase)
+async def mutate_accounts(request: Request, x_guru_passphrase: Optional[str] = Header(default=""), authorization: Optional[str] = Header(default="")):
+    require_staff(x_guru_passphrase, authorization)
     body = await request.json()
     action = body.get("action")
     ts = now_iso()
@@ -457,8 +531,8 @@ def list_topics():
 
 
 @app.post("/api/topics")
-async def upsert_topics(request: Request, x_guru_passphrase: Optional[str] = Header(default="")):
-    require_staff(x_guru_passphrase)
+async def upsert_topics(request: Request, x_guru_passphrase: Optional[str] = Header(default=""), authorization: Optional[str] = Header(default="")):
+    require_staff(x_guru_passphrase, authorization)
     body = await request.json()
     items = body.get("topics") if isinstance(body.get("topics"), list) else [body]
     ts = now_iso()
@@ -491,8 +565,9 @@ async def upload_file(
     file: UploadFile = File(...),
     kelas: str = Form(default="ALL"),
     x_guru_passphrase: Optional[str] = Header(default=""),
+    authorization: Optional[str] = Header(default=""),
 ):
-    require_staff(x_guru_passphrase)
+    require_staff(x_guru_passphrase, authorization)
     file_id = str(uuid.uuid4())
     safe_name = (file.filename or "materi").replace("/", "_").replace("\\", "_")
     dest = FILES_DIR / f"{file_id}_{safe_name}"
@@ -529,9 +604,252 @@ def get_file(file_id: str, download: Optional[int] = 0):
     )
 
 
+@app.get("/api/files")
+def list_files(kelas: Optional[str] = None):
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT id, name, mime_type, size, kelas, created_at FROM files ORDER BY created_at DESC LIMIT 200"
+        ).fetchall()
+    out = []
+    kf = str(kelas or "").strip().upper()
+    for r in rows:
+        rk = str(r["kelas"] or "ALL").strip().upper()
+        if kf and kf != "ALL" and rk != "ALL" and rk != kf:
+            continue
+        fid = r["id"]
+        out.append(
+            {
+                "id": fid,
+                "name": r["name"],
+                "mimeType": r["mime_type"],
+                "size": r["size"],
+                "kelas": r["kelas"] or "ALL",
+                "createdAt": r["created_at"],
+                "viewLink": f"/api/files/{fid}",
+                "previewLink": f"/api/files/{fid}",
+                "downloadLink": f"/api/files/{fid}?download=1",
+            }
+        )
+    return {"files": out}
+
+
+@app.get("/api/leaderboard")
+def get_leaderboard(kelas: Optional[str] = None):
+    act = read_activity_dict()
+    with get_conn() as conn:
+        accs = conn.execute("SELECT nis, nama, kelas FROM accounts ORDER BY kelas, nama").fetchall()
+    board: dict[str, dict[str, Any]] = {}
+    for a in accs:
+        board[a["nis"]] = {
+            "nis": a["nis"],
+            "nama": a["nama"],
+            "kelas": a["kelas"],
+            "xp": 0,
+            "tugasDone": 0,
+            "lkpdDone": 0,
+            "quizDone": 0,
+            "scores": [],
+        }
+    for jenis in ("tugas", "lkpd", "quiz"):
+        for item_key, entries in (act.get(jenis) or {}).items():
+            for e in entries or []:
+                if not isinstance(e, dict):
+                    continue
+                uid = str(e.get("userId") or e.get("nis") or "").strip()
+                if not uid or uid == "me":
+                    continue
+                rec = board.get(uid)
+                if not rec:
+                    rec = {
+                        "nis": uid,
+                        "nama": str(e.get("nama") or "Siswa"),
+                        "kelas": str(e.get("kelas") or "-"),
+                        "xp": 0,
+                        "tugasDone": 0,
+                        "lkpdDone": 0,
+                        "quizDone": 0,
+                        "scores": [],
+                    }
+                    board[uid] = rec
+                if jenis == "lkpd" and item_key == "game-progress":
+                    rec["xp"] = max(rec["xp"], int(e.get("xp") or 0))
+                else:
+                    if jenis == "tugas":
+                        rec["tugasDone"] += 1
+                    elif jenis == "lkpd":
+                        rec["lkpdDone"] += 1
+                    elif jenis == "quiz":
+                        rec["quizDone"] += 1
+                    if e.get("nilai") is not None:
+                        try:
+                            rec["scores"].append(float(e["nilai"]))
+                        except (TypeError, ValueError):
+                            pass
+    kf = str(kelas or "").strip().upper()
+    rows_out = []
+    for rec in board.values():
+        if kf and kf != "ALL" and str(rec["kelas"] or "").upper() != kf:
+            continue
+        done_total = rec["tugasDone"] + rec["lkpdDone"] + rec["quizDone"]
+        avg = round(sum(rec["scores"]) / len(rec["scores"]), 1) if rec["scores"] else 0.0
+        pts = rec["xp"] + done_total * 25 + round(avg)
+        badges = []
+        if rec["xp"] >= 100:
+            badges.append("🎮 Master Game")
+        if done_total >= 3:
+            badges.append("🔥 Rajin Belajar")
+        if avg >= 85 and rec["scores"]:
+            badges.append("⭐ Nilai Tinggi")
+        if rec["quizDone"] >= 1:
+            badges.append("⚡ Penakluk Quiz")
+        rows_out.append(
+            {
+                "nis": rec["nis"],
+                "nama": rec["nama"],
+                "kelas": rec["kelas"],
+                "xp": rec["xp"],
+                "doneCount": done_total,
+                "avgScore": avg,
+                "points": pts,
+                "badges": badges,
+            }
+        )
+    rows_out.sort(key=lambda x: (x["points"], x["xp"], x["avgScore"]), reverse=True)
+    return {"leaderboard": rows_out, "updatedAt": now_iso()}
+
+
+@app.post("/api/live/create")
+async def live_create(
+    request: Request,
+    x_guru_passphrase: Optional[str] = Header(default=""),
+    authorization: Optional[str] = Header(default=""),
+):
+    require_staff(x_guru_passphrase, authorization)
+    body = await request.json()
+    pin = str(100000 + secrets.randbelow(900000))
+    ts = now_iso()
+    mode = str(body.get("mode") or "gold")
+    kelas = str(body.get("kelas") or "ALL")
+    host_name = str(body.get("hostName") or "Guru")
+    quiz = body.get("quiz") or {}
+    with get_conn() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO live_rooms (pin, host_name, mode, kelas, quiz_json, status, players_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (pin, host_name, mode, kelas, json.dumps(quiz, ensure_ascii=False), "waiting", "{}", ts, ts),
+        )
+        conn.commit()
+    return {"ok": True, "pin": pin, "mode": mode, "kelas": kelas, "status": "waiting", "players": [], "quiz": quiz, "updatedAt": ts}
+
+
+@app.get("/api/live/{pin}")
+def live_get(pin: str):
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM live_rooms WHERE pin = ?", (str(pin).strip(),)).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Room PIN tidak ditemukan atau sudah ditutup.")
+    players_map = json.loads(row["players_json"] or "{}")
+    players = sorted(players_map.values(), key=lambda p: (int(p.get("score") or 0), int(p.get("streak") or 0)), reverse=True)
+    return {
+        "ok": True,
+        "pin": row["pin"],
+        "hostName": row["host_name"],
+        "mode": row["mode"],
+        "kelas": row["kelas"],
+        "status": row["status"],
+        "quiz": json.loads(row["quiz_json"] or "{}"),
+        "players": players,
+        "updatedAt": row["updated_at"],
+    }
+
+
+@app.post("/api/live/join")
+async def live_join(request: Request):
+    body = await request.json()
+    pin = str(body.get("pin") or "").strip()
+    uid = str(body.get("userId") or body.get("nis") or body.get("nama") or "").strip()
+    if not pin or not uid:
+        raise HTTPException(status_code=400, detail="PIN dan identitas siswa wajib diisi.")
+    ts = now_iso()
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM live_rooms WHERE pin = ?", (pin,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="PIN kelas tidak ditemukan.")
+        players_map = json.loads(row["players_json"] or "{}")
+        cur = players_map.get(uid) or {}
+        players_map[uid] = {
+            "userId": uid,
+            "nama": str(body.get("nama") or cur.get("nama") or "Siswa")[:60],
+            "kelas": str(body.get("kelas") or cur.get("kelas") or "")[:20],
+            "ava": str(body.get("ava") or cur.get("ava") or "🦊")[:8],
+            "score": int(cur.get("score") or 0),
+            "streak": int(cur.get("streak") or 0),
+            "answered": int(cur.get("answered") or 0),
+            "finished": bool(cur.get("finished") or False),
+            "joinedAt": cur.get("joinedAt") or ts,
+        }
+        conn.execute(
+            "UPDATE live_rooms SET players_json = ?, updated_at = ? WHERE pin = ?",
+            (json.dumps(players_map, ensure_ascii=False), ts, pin),
+        )
+        conn.commit()
+    return live_get(pin)
+
+
+@app.post("/api/live/score")
+async def live_score(request: Request):
+    body = await request.json()
+    pin = str(body.get("pin") or "").strip()
+    uid = str(body.get("userId") or body.get("nis") or body.get("nama") or "").strip()
+    if not pin or not uid:
+        raise HTTPException(status_code=400, detail="PIN dan userId wajib diisi.")
+    ts = now_iso()
+    with get_conn() as conn:
+        row = conn.execute("SELECT players_json FROM live_rooms WHERE pin = ?", (pin,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="PIN kelas tidak ditemukan.")
+        players_map = json.loads(row["players_json"] or "{}")
+        cur = players_map.get(uid) or {"userId": uid, "nama": str(body.get("nama") or "Siswa"), "kelas": str(body.get("kelas") or ""), "ava": "🦊"}
+        cur["score"] = max(0, int(body.get("score") or 0))
+        cur["streak"] = max(0, int(body.get("streak") or 0))
+        cur["answered"] = max(0, int(body.get("answered") or 0))
+        cur["finished"] = bool(body.get("finished") or False)
+        players_map[uid] = cur
+        conn.execute(
+            "UPDATE live_rooms SET players_json = ?, updated_at = ? WHERE pin = ?",
+            (json.dumps(players_map, ensure_ascii=False), ts, pin),
+        )
+        conn.commit()
+    return live_get(pin)
+
+
+@app.post("/api/live/{pin}/state")
+async def live_state(
+    pin: str,
+    request: Request,
+    x_guru_passphrase: Optional[str] = Header(default=""),
+    authorization: Optional[str] = Header(default=""),
+):
+    require_staff(x_guru_passphrase, authorization)
+    body = await request.json()
+    status = str(body.get("status") or "playing")
+    if status not in ("waiting", "playing", "finished"):
+        raise HTTPException(status_code=400, detail="Status room tidak valid.")
+    ts = now_iso()
+    with get_conn() as conn:
+        cur = conn.execute("SELECT pin FROM live_rooms WHERE pin = ?", (str(pin).strip(),)).fetchone()
+        if not cur:
+            raise HTTPException(status_code=404, detail="Room PIN tidak ditemukan.")
+        conn.execute("UPDATE live_rooms SET status = ?, updated_at = ? WHERE pin = ?", (status, ts, str(pin).strip()))
+        conn.commit()
+    return live_get(pin)
+
+
 @app.post("/api/migrate")
-async def migrate_from_browser(request: Request, x_guru_passphrase: Optional[str] = Header(default="")):
-    require_staff(x_guru_passphrase)
+async def migrate_from_browser(request: Request, x_guru_passphrase: Optional[str] = Header(default=""), authorization: Optional[str] = Header(default="")):
+    require_staff(x_guru_passphrase, authorization)
     payload = await request.json()
     stats = {"catalog": 0, "accounts": 0, "submissions": 0, "topics": 0}
     ts = now_iso()
@@ -644,8 +962,8 @@ async def save_activity_internal(payload: dict[str, Any], ts: str) -> None:
 
 
 @app.post("/api/reset")
-def reset_all(x_guru_passphrase: Optional[str] = Header(default="")):
-    require_staff(x_guru_passphrase)
+def reset_all(x_guru_passphrase: Optional[str] = Header(default=""), authorization: Optional[str] = Header(default="")):
+    require_staff(x_guru_passphrase, authorization)
     with get_conn() as conn:
         conn.executescript(
             """
@@ -654,6 +972,7 @@ def reset_all(x_guru_passphrase: Optional[str] = Header(default="")):
             DELETE FROM accounts;
             DELETE FROM catalog_topics;
             DELETE FROM files;
+            DELETE FROM live_rooms;
             DELETE FROM kv_store;
             """
         )

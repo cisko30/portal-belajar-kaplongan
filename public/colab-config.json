@@ -1,0 +1,4 @@
+{
+  "colabUrl": "",
+  "note": "Isi colabUrl dengan URL Cloudflare Named Tunnel permanen (mis. https://db.portalkaplongan.my.id) agar seluruh guru dan siswa otomatis terhubung ke Google Colab SQLite tanpa parameter ?colab=."
+}

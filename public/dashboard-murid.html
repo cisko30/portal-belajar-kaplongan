@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
+<meta name="theme-color" content="#4f46e5">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon-192.svg" type="image/svg+xml">
+<script src="/pwa-register.js"></script>
 <script>
 // Wajib login siswa (atau guru/admin) sebelum membuka Dashboard Murid.
 (function(){
@@ -390,6 +394,8 @@ body{
       <a href="/game-quiz.html" class="nav-item" style="text-decoration:none;background:linear-gradient(90deg,#fde68a,#fbcfe8);color:#7c2d12;font-weight:700"><i data-lucide="gamepad-2" width="16" height="16"></i>Game Quiz 🎮</a>
       <div class="nav-item" data-feature="skill"><i data-lucide="award" width="16" height="16"></i>Skill &amp; Kompetensi</div>
       <div class="nav-item" data-feature="progres_saya"><i data-lucide="trending-up" width="16" height="16"></i>Progres Saya 📈</div>
+      <div class="nav-item" data-feature="leaderboard"><i data-lucide="trophy" width="16" height="16"></i>Leaderboard 🏆</div>
+      <div class="nav-item" data-feature="mediaBank"><i data-lucide="folder-open" width="16" height="16"></i>Bank Media 🗂️</div>
       <div class="nav-lbl">Belajar</div>
       <div class="nav-item"><i data-lucide="bar-chart-3" width="16" height="16"></i>Nilai</div>
       <div class="nav-item"><i data-lucide="calendar-days" width="16" height="16"></i>Jadwal</div>
@@ -862,7 +868,7 @@ render();
       if(window.colabDb) window.colabDb.auth.signOut();
       // Hanya sesi yang dibersihkan — materi/tugas tetap tersimpan.
       try{
-        ['userRole','pb.murid.myClass','pb.guru.passphrase','pb.session.role'].forEach(function(k){localStorage.removeItem(k);});
+        ['userRole','pb.murid.myClass','pb.guru.passphrase','pb.session.role','pb.session.token'].forEach(function(k){localStorage.removeItem(k);});
         sessionStorage.removeItem('pb.admin.ok');
       }catch(e){}
       location.href='portal-belajar.html';

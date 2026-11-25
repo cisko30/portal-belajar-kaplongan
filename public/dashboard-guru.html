@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
+<meta name="theme-color" content="#4f46e5">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon-192.svg" type="image/svg+xml">
+<script src="/pwa-register.js"></script>
 <!-- skill:chrome -->
 <style>
 /* Credit line — bottom-right */
@@ -47,9 +51,11 @@ document.documentElement.style.visibility='hidden';
       location.replace(role==='siswa'||role==='murid'?'/dashboard-murid.html':'/portal-belajar.html');return;
     }
     const colabUrl = (localStorage.getItem('pb.colab.url') || '').replace(/\/+$/, '');
+    const tok = localStorage.getItem('pb.session.token') || '';
     try {
       const endpoint = colabUrl ? (colabUrl + '/api/teacher-session') : '/api/drive/materials?teacher-session=1';
       const headers = colabUrl ? {'x-guru-passphrase':pass,'ngrok-skip-browser-warning':'1'} : {'x-guru-passphrase':pass};
+      if (tok) headers['Authorization'] = 'Bearer ' + tok;
       const r = await fetch(endpoint,{cache:'no-store',headers});
       const ct = r.headers.get('content-type') || '';
       const isStatic = !colabUrl && (r.status === 404 || (r.ok && !ct.includes('json')));
@@ -549,6 +555,14 @@ tbody tr:hover td{background:oklch(97% 0.01 265);color:var(--tx)}
     <div class="nav-item" data-feature="skill">
       <i data-lucide="award" width="16" height="16"></i>
       <span>Skill &amp; Kompetensi</span>
+    </div>
+    <div class="nav-item" data-feature="leaderboard">
+      <i data-lucide="trophy" width="16" height="16"></i>
+      <span>Leaderboard &amp; Lencana 🏆</span>
+    </div>
+    <div class="nav-item" data-feature="mediaBank">
+      <i data-lucide="folder-open" width="16" height="16"></i>
+      <span>Bank Media 🗂️</span>
     </div>
 
     <div class="nav-lbl">Lainnya</div>
@@ -1116,7 +1130,7 @@ setTimeout(()=>{if(window.lucide)lucide.createIcons()},100);
       if(window.colabDb) window.colabDb.auth.signOut();
       // Hanya sesi yang dibersihkan — materi/tugas tetap tersimpan.
       try{
-        ['userRole','pb.murid.myClass','pb.guru.passphrase','pb.session.role'].forEach(function(k){localStorage.removeItem(k);});
+        ['userRole','pb.murid.myClass','pb.guru.passphrase','pb.session.role','pb.session.token'].forEach(function(k){localStorage.removeItem(k);});
         sessionStorage.removeItem('pb.admin.ok');
       }catch(e){}
       location.href='portal-belajar.html';

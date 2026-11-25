@@ -2,6 +2,10 @@
 <html lang="id"><head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Arena Game Quiz — Portal Belajar</title>
+<meta name="theme-color" content="#4f46e5"/>
+<link rel="manifest" href="/manifest.json"/>
+<link rel="icon" href="/icon-192.svg" type="image/svg+xml"/>
+<script src="/pwa-register.js"></script>
 <meta name="description" content="Main quiz seru ala Blooket & Wordwall: Gold Rush, Balon Pecah, dan Kartu Cocok."/>
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@600;800&display=swap" rel="stylesheet"/>
 <style>
@@ -223,7 +227,126 @@ const AVAS=['🦊','🐼','🐸','🦄','🐯','🐙','🤖','👾','🐲','🦁
 const xp=()=>+(rd('pb.game.xp')||0), addXp=n=>localStorage.setItem('pb.game.xp',xp()+n);
 /* ── Statistik jawaban & sinkronisasi progres ke server (untuk halaman Progres Siswa guru) ── */
 const ans=()=>+(rd('pb.game.answered')||0), cor=()=>+(rd('pb.game.correct')||0);
-const bumpAns=ok=>{localStorage.setItem('pb.game.answered',ans()+1);if(ok)localStorage.setItem('pb.game.correct',cor()+1)};
+const bumpAns=ok=>{
+  localStorage.setItem('pb.game.answered',ans()+1);
+  if(ok)localStorage.setItem('pb.game.correct',cor()+1);
+  if(window._liveRoom){
+    window._liveScore = Math.max(0, (window._liveScore||0) + (ok ? 25 : 0));
+    window._liveStreak = ok ? ((window._liveStreak||0)+1) : 0;
+    window._liveAnswered = (window._liveAnswered||0)+1;
+    pushLiveScore(false);
+  }
+};
+const LIVE_MODE_NAMES={gold:'💰 Gold Rush',balon:'🎈 Balon Pecah',tikus:'🔨 Pukul Tikus',roket:'🚀 Balap Roket',cocok:'🧩 Kartu Cocok',candy:'🍬 Candy Quest',fish:'🦈 Fishing Frenzy',cyber:'💻 Cyber Hack',petualangan:'🗺️ Petualangan Bonus',menara:'🏰 Pertahanan Menara',roda:'🎡 Roda Keberuntungan',bos:'🐉 Duel Bos Raksasa'};
+const liveLocalKey=pin=>'pb.live.room.'+String(pin||'').trim();
+const isStaffSession=()=>{const r=String(rd('userRole')||'').replace(/^"|"$/g,'').trim();return (r==='guru'||r==='admin')&&!!localStorage.getItem('pb.guru.passphrase');};
+async function liveApi(op, arg1, arg2){
+  const hasColab = window.colabDb && window.colabDb.isReady() && window.colabDb.live;
+  if(op==='create'){
+    if(hasColab){ try{ return await window.colabDb.live.create(arg1, localStorage.getItem('pb.guru.passphrase')||''); }catch(_){} }
+    const pin=String(100000+Math.floor(Math.random()*900000));
+    const room={ok:true,pin,hostName:arg1.hostName||'Guru',mode:arg1.mode||'gold',kelas:arg1.kelas||'ALL',quiz:arg1.quiz,status:'waiting',players:[],updatedAt:new Date().toISOString()};
+    localStorage.setItem(liveLocalKey(pin),JSON.stringify(room));
+    return room;
+  }
+  if(op==='get'){
+    if(hasColab){ try{ return await window.colabDb.live.get(arg1); }catch(_){} }
+    const r=rd(liveLocalKey(arg1)); if(!r) throw new Error('PIN Room tidak ditemukan.');
+    return r;
+  }
+  if(op==='join'){
+    if(hasColab){ try{ return await window.colabDb.live.join(arg1); }catch(_){} }
+    const r=rd(liveLocalKey(arg1.pin)); if(!r) throw new Error('PIN Room tidak ditemukan.');
+    const ps=(r.players||[]).filter(p=>p.userId!==arg1.userId);
+    ps.push({userId:arg1.userId,nama:arg1.nama,kelas:arg1.kelas,ava:arg1.ava||'🦊',score:0,streak:0,answered:0,finished:false});
+    r.players=ps; localStorage.setItem(liveLocalKey(arg1.pin),JSON.stringify(r));
+    return r;
+  }
+  if(op==='score'){
+    if(hasColab){ try{ return await window.colabDb.live.score(arg1); }catch(_){} }
+    const r=rd(liveLocalKey(arg1.pin)); if(!r) return null;
+    const ps=r.players||[];
+    const idx=ps.findIndex(p=>p.userId===arg1.userId);
+    const prev=idx>=0?ps[idx]:{userId:arg1.userId,nama:arg1.nama,kelas:arg1.kelas,ava:arg1.ava||'🦊'};
+    const next=Object.assign({},prev,{score:arg1.score,streak:arg1.streak,answered:arg1.answered,finished:!!arg1.finished});
+    if(idx>=0) ps[idx]=next; else ps.push(next);
+    ps.sort((a,b)=>(b.score||0)-(a.score||0));
+    r.players=ps; localStorage.setItem(liveLocalKey(arg1.pin),JSON.stringify(r));
+    return r;
+  }
+  if(op==='state'){
+    if(hasColab){ try{ return await window.colabDb.live.setState(arg1, arg2, localStorage.getItem('pb.guru.passphrase')||''); }catch(_){} }
+    const r=rd(liveLocalKey(arg1)); if(!r) throw new Error('Room tidak ditemukan.');
+    r.status=arg2; localStorage.setItem(liveLocalKey(arg1),JSON.stringify(r));
+    return r;
+  }
+}
+function pushLiveScore(finished){
+  if(!window._liveRoom) return;
+  const uid=localStorage.getItem('pb.murid.nis')||nama+'|'+kelas;
+  liveApi('score',{pin:window._liveRoom.pin,userId:uid,nama,kelas,ava:ava(),score:Math.max(window._liveScore||0,window._liveFinal||0),streak:window._liveStreak||0,answered:window._liveAnswered||0,finished:!!finished}).catch(()=>{});
+}
+function stopLivePoll(){ if(window._livePoll){ clearInterval(window._livePoll); window._livePoll=null; } }
+function openLiveHost(pin, initialRoom){
+  stopLivePoll();
+  let cur=initialRoom;
+  const draw=()=>{
+    const ps=cur.players||[];
+    app.innerHTML=`<div class="top"><h1 class="f" style="margin:0">📡 Live Room Kelas</h1><button class="btn ghost" onclick="stopLivePoll();home()">← Keluar Room</button></div>
+    <div class="card" style="margin:16px 0;text-align:center;border-color:#ffcb05">
+      <div style="font-size:13px;font-weight:700;opacity:.8">BAGIKAN PIN INI KE SISWA:</div>
+      <div style="font:700 clamp(40px,8vw,64px) Fredoka;letter-spacing:.14em;color:#ffcb05;margin:6px 0">${esc(cur.pin)}</div>
+      <div style="font-size:14px;margin-bottom:14px">Mode: <b>${esc(LIVE_MODE_NAMES[cur.mode]||cur.mode)}</b> · Paket: <b>${esc((cur.quiz&&cur.quiz.j)||'Quiz')}</b> · Status: <b>${cur.status==='playing'?'🟢 Berlangsung':cur.status==='finished'?'🏁 Selesai':'🟡 Menunggu Pemain'}</b></div>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        ${cur.status==='waiting'?`<button class="btn" id="lvStart">▶ Mulai Game Sekarang (${ps.length} siswa)</button>`:''}
+        ${cur.status==='playing'?`<button class="btn ghost" id="lvEnd">🏁 Akhiri Sesi Live</button>`:''}
+      </div>
+    </div>
+    <div class="card"><h3 class="f" style="margin-top:0">🏆 Papan Skor Langsung (${ps.length} Pemain)</h3>
+      <ul class="lb" style="list-style:none;padding:0;margin:0">${ps.map((p,idx)=>`<li><span>${['🥇','🥈','🥉'][idx]||'#'+(idx+1)} ${esc(p.ava||'🦊')} <b>${esc(p.nama)}</b> <small style="opacity:.75">${esc(p.kelas||'')}</small> ${p.finished?'<span class="chip" style="padding:2px 8px;font-size:11px">Selesai</span>':''}</span><b>${p.score||0} poin</b></li>`).join('')||'<li>Menunggu siswa memasukkan PIN...</li>'}</ul>
+    </div>`;
+    const stBtn=$('#lvStart');
+    if(stBtn) stBtn.onclick=async()=>{ cur=await liveApi('state',pin,'playing'); beep(880); draw(); };
+    const edBtn=$('#lvEnd');
+    if(edBtn) edBtn.onclick=async()=>{ cur=await liveApi('state',pin,'finished'); draw(); };
+  };
+  draw();
+  window._livePoll=setInterval(async()=>{
+    try{ cur=await liveApi('get',pin); draw(); }catch(_){}
+  },2000);
+}
+async function joinLiveRoom(pin){
+  stopLivePoll();
+  const uid=localStorage.getItem('pb.murid.nis')||nama+'|'+kelas;
+  let cur=await liveApi('join',{pin,userId:uid,nama,kelas,ava:ava()});
+  window._liveRoom={pin:cur.pin,mode:cur.mode};
+  window._liveScore=0; window._liveStreak=0; window._liveAnswered=0; window._liveFinal=0;
+  const launch=()=>{
+    stopLivePoll();
+    quiz=cur.quiz&&cur.quiz.soal&&cur.quiz.soal.length?cur.quiz:(QUIZZES[0]||BUILTIN_QUIZZES[0]);
+    const fn=GAMES[cur.mode]||GAMES.gold;
+    fn();
+  };
+  if(cur.status==='playing'){ return launch(); }
+  const drawLobby=()=>{
+    const ps=cur.players||[];
+    app.innerHTML=`<div class="top"><h1 class="f" style="margin:0">📡 Lobi Live Room #${esc(cur.pin)}</h1><button class="btn ghost" onclick="stopLivePoll();window._liveRoom=null;home()">← Keluar</button></div>
+    <div class="card" style="margin:18px 0;text-align:center">
+      <div style="font-size:48px" class="float">${ava()}</div>
+      <h2 class="f" style="margin:8px 0 4px">Kamu sudah bergabung!</h2>
+      <p style="opacity:.85">Menunggu Pak/Bu Guru menekan tombol <b>Mulai Game</b>...<br>Mode: <b>${esc(LIVE_MODE_NAMES[cur.mode]||cur.mode)}</b> · Paket: <b>${esc((cur.quiz&&cur.quiz.j)||'-')}</b></p>
+      <div class="chip" style="margin-top:8px">👥 ${ps.length} Siswa di Lobi</div>
+    </div>`;
+  };
+  drawLobby();
+  window._livePoll=setInterval(async()=>{
+    try{
+      cur=await liveApi('get',pin);
+      if(cur.status==='playing') launch();
+      else drawLobby();
+    }catch(_){}
+  },1800);
+}
 async function syncProgress(mode,points){
   const diff={};['gold','balon','tikus','roket','cocok','candy','fish','cyber','petualangan','menara','roda','bos'].forEach(k=>diff[k]=DL(k));
   const entry={userId:localStorage.getItem('pb.murid.nis')||nama+'|'+kelas,nama,kelas,xp:xp(),level:level(),diff,answered:ans(),correct:cor(),mode,points,quiz:quiz?.j||'',at:new Date().toISOString()};
@@ -246,6 +369,12 @@ function home(){
   <div class="card" style="margin:18px 0"><div class="lvl"><span class="float" style="font-size:52px">${ava()}</span><div style="flex:1"><b class="f" style="font-size:20px">Level ${level()}</b> · ${xp()} XP<div class="bar" style="margin-top:6px"><div style="width:${Math.min(100,(xp()-50*(level()-1)**2)/(50*level()**2-50*(level()-1)**2)*100)}%"></div></div></div>
   <button class="btn ghost" onclick="MUTE=!MUTE;localStorage.setItem('pb.game.mute',MUTE?1:0);home()">${MUTE?'🔇':'🔊'}</button></div>
   <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap">${AVAS.map(a=>`<span class="ava ${a===ava()?'on':''}" onclick="localStorage.setItem('pb.game.ava',JSON.stringify('${a}'));beep(880);home()">${a}</span>`).join('')}</div></div>
+  <div class="card" style="margin:18px 0;border-color:#38bdf866"><h3 class="f" style="margin-top:0">📡 Mode Live Room (PIN Kelas)</h3>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <input class="in" id="livePinIn" maxlength="6" placeholder="Masukkan 6 digit PIN kelas..." style="flex:1;min-width:180px;max-width:260px"/>
+    <button class="btn" id="liveJoinBtn">🚀 Gabung Live</button>
+    ${isStaffSession()?`<button class="btn ghost" id="liveCreateBtn">🎓 Buat PIN Live (Guru)</button>`:''}
+  </div></div>
   <div class="card" style="margin:18px 0"><h3 class="f" style="margin-top:0">1. Pilih paket soal</h3>
   ${QUIZZES.length?`<select id="qs">${QUIZZES.map((q,i)=>`<option value="${i}">${esc(q.j)} (${q.soal.length} soal)</option>`).join('')}</select>`:'<p>Belum ada quiz dari guru untuk kelasmu. Minta Pak/Bu guru mengirim quiz dulu ya 🙂</p>'}</div>
   <h3 class="f">2. Pilih mode permainan (12 Arena Seru!)</h3>
@@ -266,9 +395,13 @@ function home(){
   <div class="card" style="margin-top:18px"><h3 class="f" style="margin-top:0">🏆 Papan Rekor Terbaik Kamu</h3><ul class="lb" style="list-style:none;padding:0;margin:0">${(rd('pb.game.scores')||[]).slice(0,6).map((s,idx)=>`<li><span>${['🥇','🥈','🥉'][idx]||'⭐'} <b>${esc(s.mode)}</b> · ${esc(s.quiz)}</span><b>${s.skor} poin</b></li>`).join('')||'<li>Belum ada rekor. Ayo mulai petualangan atau pilih arena favoritmu!</li>'}</ul></div>`;
   app.querySelectorAll('.mode').forEach(m=>m.onclick=()=>{if(!QUIZZES.length)return alert('Belum ada quiz.');quiz=QUIZZES[+$('#qs').value];GAMES[m.dataset.m]()});
   app.querySelectorAll('.mode').forEach(m=>m.insertAdjacentHTML('beforeend',`<div style="font-size:12px;opacity:.8">Level ${DL(m.dataset.m)}/10 ${stars(m.dataset.m)}</div>`));
+  const ljBtn=$('#liveJoinBtn');
+  if(ljBtn) ljBtn.onclick=async()=>{const p=($('#livePinIn').value||'').trim();if(p.length<4)return alert('Masukkan 6 digit PIN room dari guru.');try{await joinLiveRoom(p);}catch(e){alert(e.message||'Gagal masuk ke room.');}};
+  const lcBtn=$('#liveCreateBtn');
+  if(lcBtn) lcBtn.onclick=async()=>{if(!QUIZZES.length)return alert('Buat/pilih paket soal terlebih dulu.');const q=QUIZZES[+$('#qs').value];const mk=prompt('Pilih kode mode game (gold, balon, tikus, roket, cocok, candy, fish, cyber, petualangan, menara, roda, bos):','gold');if(!mk)return;const modeKey=GAMES[mk.trim()]?mk.trim():'gold';try{const room=await liveApi('create',{mode:modeKey,kelas:q.k||'ALL',hostName:nama||'Guru',quiz:q});openLiveHost(room.pin,room);}catch(e){alert(e.message||'Gagal membuat Live Room.');}};
 }
 function save(mode,skor){const l=rd('pb.game.scores')||[];l.push({mode,skor,quiz:quiz.j,ts:Date.now()});l.sort((a,b)=>b.skor-a.skor);localStorage.setItem('pb.game.scores',JSON.stringify(l.slice(0,20)))}
-function finish(mode,skor,detail,key,acc){const prevBest=Math.max(0,...(rd('pb.game.scores')||[]).filter(s=>s.mode===mode).map(s=>+s.skor||0));const isNewRec=skor>prevBest&&skor>0;if(key&&acc!=null){const lv=DL(key);if(acc>=.8&&lv<10){setDL(key,lv+1);setTimeout(()=>pop('⚡ Level game naik → '+(lv+1)+'! Makin sulit!'),900)}else if(acc<.4&&lv>1)setDL(key,lv-1)}const gain=Math.max(5,Math.round(skor/4));const lv0=level();addXp(gain);if(level()>lv0)setTimeout(()=>pop('⬆️ LEVEL '+level()+'!'),600);confetti(130);beep(523);setTimeout(()=>beep(659),150);setTimeout(()=>beep(784),300);setTimeout(()=>beep(1046),450);save(mode,skor);syncProgress(mode,skor);
+function finish(mode,skor,detail,key,acc){const prevBest=Math.max(0,...(rd('pb.game.scores')||[]).filter(s=>s.mode===mode).map(s=>+s.skor||0));const isNewRec=skor>prevBest&&skor>0;if(key&&acc!=null){const lv=DL(key);if(acc>=.8&&lv<10){setDL(key,lv+1);setTimeout(()=>pop('⚡ Level game naik → '+(lv+1)+'! Makin sulit!'),900)}else if(acc<.4&&lv>1)setDL(key,lv-1)}const gain=Math.max(5,Math.round(skor/4));const lv0=level();addXp(gain);if(level()>lv0)setTimeout(()=>pop('⬆️ LEVEL '+level()+'!'),600);confetti(130);beep(523);setTimeout(()=>beep(659),150);setTimeout(()=>beep(784),300);setTimeout(()=>beep(1046),450);save(mode,skor);if(window._liveRoom){window._liveFinal=skor;pushLiveScore(true);window._liveRoom=null;}syncProgress(mode,skor);
   const rank=(acc==null||acc>=.85)?'🥇 Peringkat S':acc>=.65?'🥈 Peringkat A':'🥉 Peringkat B';
   app.innerHTML=`<div class="card" style="text-align:center;margin-top:32px;border-color:#ffcb0566"><div style="font-size:78px">${isNewRec?'👑':'🏆'}</div><span class="chip" style="background:#ffcb0533;color:#ffcb05;margin-bottom:8px">${rank}${isNewRec?' · 🎉 REKOR BARU!':''}</span><h1 class="f" style="margin:6px 0">Hebat, ${esc(nama)}!</h1><div style="font-size:58px;margin:8px 0" class="float">${ava()}</div><h2 class="f" style="color:var(--y)">${skor} poin · +${gain} XP</h2><p>${detail}</p>${key?`<p>Level kesulitan ${esc(mode)} sekarang: <b>${DL(key)}/10</b> ${stars(key)}</p>`:''}
   <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px"><button class="btn" onclick="GAMES['${key||'gold'}']()">🔄 Main lagi</button><button class="btn ghost" onclick="home()">Ganti mode</button></div></div>`}

@@ -1362,9 +1362,33 @@
     return {check, paint, markSeen, start};
   })();
 
-  // ── util: baca file jadi dataURL ──
-  const readFile = (file, maxMB=5) => new Promise((res,rej)=>{
+  // ── util: baca file jadi dataURL (auto-kompresi foto max 1280px JPEG) ──
+  const compressImage = (file, maxDim=1280, quality=0.78) => new Promise((res)=>{
+    const fallback = ()=>{ const r=new FileReader(); r.onload=()=>res({name:file.name,size:file.size,type:file.type,data:r.result}); r.onerror=()=>res(null); r.readAsDataURL(file); };
+    try{
+      const url=URL.createObjectURL(file);
+      const img=new Image();
+      img.onload=()=>{
+        try{
+          let w=img.width, h=img.height;
+          if(w>maxDim||h>maxDim){ const s=Math.min(maxDim/w,maxDim/h); w=Math.round(w*s); h=Math.round(h*s); }
+          const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+          const ctx=cv.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+          const data=cv.toDataURL('image/jpeg',quality);
+          URL.revokeObjectURL(url);
+          res({name:file.name.replace(/\.\w+$/,'.jpg'),size:Math.round(data.length*0.75),type:'image/jpeg',data,compressed:true});
+        }catch(_){ URL.revokeObjectURL(url); fallback(); }
+      };
+      img.onerror=()=>{ URL.revokeObjectURL(url); fallback(); };
+      img.src=url;
+    }catch(_){ fallback(); }
+  });
+  const readFile = (file, maxMB=5) => new Promise(async (res,rej)=>{
     if(!file) return res(null);
+    if(/^image\/(jpeg|jpg|png|webp)$/i.test(file.type||'')){
+      const comp = await compressImage(file);
+      if(comp && comp.size <= maxMB*1048576) return res(comp);
+    }
     if(file.size > maxMB*1048576) return rej(new Error(`File terlalu besar (maks ${maxMB}MB)`));
     const r=new FileReader(); r.onload=()=>res({name:file.name,size:file.size,type:file.type,data:r.result}); r.onerror=rej; r.readAsDataURL(file);
   });
@@ -1376,32 +1400,41 @@
     if(!f) return '';
     if(f.drive && isHtmlFile(f) && f.id) return `/api/drive/materials?fileId=${encodeURIComponent(f.id)}&download=1`;
     if(f.drive) return f.download || f.data;
-    return f.data;
+    return f.download || f.data || f.downloadLink || f.viewLink || '';
   };
   const dlAttrs = (f)=> (f && f.drive && !isHtmlFile(f)) ? 'target="_blank" rel="noopener"' : `download="${esc((f&&f.name)||'materi')}"`;
 
-  // ── viewer inline (materi / lampiran) ──
-  function openViewer(title, {link, file}){
+  // ── viewer inline (materi / lampiran / preview kiriman siswa) ──
+  function openViewer(title, {link, file, text}){
     const wrap=document.createElement('div');
-    wrap.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.75);z-index:10001;display:flex;align-items:center;justify-content:center;padding:20px';
+    wrap.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.78);z-index:10050;display:flex;align-items:center;justify-content:center;padding:20px';
     const isDrive = !!(file && file.drive);
     const isHtml = isHtmlFile(file);
-    // Drive tidak bisa merender .html; sajikan lewat proxy kita sendiri (sandboxed).
     const driveSrc = isHtml && file.id
       ? `/api/drive/materials?fileId=${encodeURIComponent(file.id)}`
-      : (file && (file.preview || file.data));
-    const src = file ? (isDrive ? driveSrc : file.data) : link;
+      : (file && (file.preview || file.previewLink || file.viewLink || file.data));
+    const src = file ? (isDrive ? driveSrc : (file.data || file.previewLink || file.viewLink)) : link;
     const dlHref = dlUrl(file);
-    const isImg = !isDrive && file && (file.type||'').startsWith('image/');
-    const body = isImg
-      ? `<img src="${src}" style="max-width:100%;max-height:75vh;display:block;margin:auto;border-radius:8px"/>`
-      : `<iframe src="${esc(src)}" allow="autoplay"${isHtml?' sandbox="allow-scripts allow-popups"':''} style="width:100%;height:75vh;border:0;border-radius:8px;background:#fff"></iframe>`;
-    wrap.innerHTML=`<div style="background:#fff;border-radius:14px;padding:16px;max-width:1000px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.4)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <h3 style="margin:0;font-size:16px">${esc(title)}${isDrive?' <span class="fp-badge info" style="font-size:10px">Drive</span>':''}</h3>
-        <div style="display:flex;gap:8px">
-          ${file?`<a class="fp-btn sm" href="${esc(dlHref)}" ${dlAttrs(file)}>⬇️ Unduh${isHtml?' HTML asli':''}</a>`:''}
-          ${link?`<a class="fp-btn sm ghost" href="${esc(link)}" target="_blank" rel="noopener">Buka Tab Baru</a>`:''}
+    const isImg = (file && ((file.type||'').startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(file.name||''))) || /\.(png|jpe?g|gif|webp)(\?|$)/i.test(src||'');
+    const isTxt = file && ((file.type||'').startsWith('text/plain') || /\.(txt|py|csv|json|md)$/i.test(file.name||''));
+    let body = '';
+    if(text) body += `<div style="background:#f8fafc;color:#0f172a;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:10px;max-height:220px;overflow:auto;white-space:pre-wrap;font-size:13px">${esc(text)}</div>`;
+    if(src){
+      body += isImg
+        ? `<img src="${esc(src)}" style="max-width:100%;max-height:70vh;display:block;margin:auto;border-radius:8px"/>`
+        : isTxt && src.startsWith('data:')
+          ? `<pre style="background:#0f172a;color:#e2e8f0;padding:14px;border-radius:8px;max-height:65vh;overflow:auto;font-size:12.5px">${esc(atob(src.split(',')[1]||''))}</pre>`
+          : `<iframe src="${esc(src)}" allow="autoplay"${isHtml?' sandbox="allow-scripts allow-popups"':''} style="width:100%;height:70vh;border:0;border-radius:8px;background:#fff"></iframe>`;
+    } else if(!text){
+      body = `<div class="fp-empty">Tidak ada berkas atau tautan untuk dipratinjau.</div>`;
+    }
+    const isDark = document.documentElement.dataset.theme==='dark';
+    wrap.innerHTML=`<div style="background:${isDark?'#111827':'#fff'};color:${isDark?'#f1f5f9':'#0f172a'};border:1px solid ${isDark?'#334155':'#e2e8f0'};border-radius:14px;padding:16px;max-width:1000px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.45)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+        <h3 style="margin:0;font-size:16px">${esc(title)}${isDrive?' <span class="fp-badge info" style="font-size:10px">Drive</span>':''}${file&&file.compressed?' <span class="fp-badge ok" style="font-size:10px">Terkompresi</span>':''}</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${file&&dlHref?`<a class="fp-btn sm" href="${esc(dlHref)}" ${dlAttrs(file)}>⬇️ Unduh</a>`:''}
+          ${(link||src)&&!String(link||src).startsWith('data:')?`<a class="fp-btn sm ghost" href="${esc(link||src)}" target="_blank" rel="noopener">Buka Tab Baru</a>`:''}
           <button class="fp-btn sm danger" id="vClose">Tutup</button>
         </div></div>${body}</div>`;
     document.body.appendChild(wrap);
@@ -1472,7 +1505,7 @@
             const renderRows=()=>sm.map((s,j)=>`<tr>
               <td>${esc(s.nama||'-')}${s.kode?`<div style="font-size:10px;color:#64748b">${esc(s.kode)}</div>`:''}</td><td>${esc(s.kelas||'-')}</td><td>${esc(s.ts||'')}${s.terlambat?' <span class="fp-badge warn">Terlambat</span>':''}</td>
               <td style="max-width:220px">${esc(s.jawaban||'-').slice(0,140)}</td>
-              <td>${s.f?`<a href="${s.f.data}" download="${esc(s.f.name)}" style="color:#4f46e5;text-decoration:underline">${esc(s.f.name)}</a>`:'-'}</td>
+              <td>${s.f?`<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center"><button type="button" class="fp-btn sm ghost" data-prev="${j}">👁️ Preview</button><a href="${s.f.data}" download="${esc(s.f.name)}" style="color:#4f46e5;font-size:12px;text-decoration:underline">${esc(s.f.name)}</a></div>`:(s.jawaban?`<button type="button" class="fp-btn sm ghost" data-prev="${j}">👁️ Baca</button>`:'-')}</td>
               <td><input type="number" min="0" max="100" class="fp-input" data-n="${j}" value="${s.nilai??''}" placeholder="0-100" style="width:75px"/></td>
               <td><input class="fp-input" data-c="${j}" value="${esc(s.catatan||'')}" placeholder="Catatan..." style="width:150px"/></td>
               <td>${s.status==='Selesai'?'<span class="fp-badge ok">Selesai</span>':s.status==='Revisi'?'<span class="fp-badge warn">Revisi</span>':'<span class="fp-badge info">Belum</span>'}</td>
@@ -1494,6 +1527,10 @@
               Activity.grade(subKey.split('.').pop(), i, sm[j], {nilai:sm[j].nilai, catatan:cv, status, dinilaiPada:sm[j].dinilaiPada}).then(()=>{SubAlerts.check(false);});
             };
             const bindRow=()=>{
+              w.querySelectorAll('[data-prev]').forEach(el=>el.onclick=()=>{
+                const s=sm[+el.dataset.prev];
+                if(s) openViewer((s.nama||'Siswa')+' — '+list[i].j, {file:s.f, text:s.jawaban});
+              });
               w.querySelectorAll('[data-sv]').forEach(el=>el.onclick=()=>commit(+el.dataset.sv,'Selesai'));
               w.querySelectorAll('[data-rv]').forEach(el=>el.onclick=()=>commit(+el.dataset.rv,'Revisi'));
             }; bindRow();
@@ -1626,7 +1663,7 @@
             const renderRows=()=>sm.map((s,j)=>`<tr>
               <td>${esc(s.nama||'-')}</td><td>${esc(s.kelas||'-')}</td><td>${esc(s.ts||'')}</td>
               <td style="max-width:220px">${esc(s.jawaban||'-').slice(0,140)}</td>
-              <td>${s.f?`<a href="${s.f.data}" download="${esc(s.f.name)}" style="color:#4f46e5">${esc(s.f.name)}</a>`:'-'}</td>
+              <td>${s.f?`<div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center"><button type="button" class="fp-btn sm ghost" data-prev="${j}">👁️ Preview</button><a href="${s.f.data}" download="${esc(s.f.name)}" style="color:#4f46e5;font-size:12px">${esc(s.f.name)}</a></div>`:(s.jawaban?`<button type="button" class="fp-btn sm ghost" data-prev="${j}">👁️ Baca</button>`:'-')}</td>
               <td><input type="number" min="0" max="100" class="fp-input" data-n="${j}" value="${s.nilai??''}" placeholder="0-100" style="width:75px"/></td>
               <td><input class="fp-input" data-c="${j}" value="${esc(s.catatan||'')}" placeholder="Catatan..." style="width:150px"/></td>
               <td>${s.status==='Selesai'?'<span class="fp-badge ok">Selesai</span>':s.status==='Revisi'?'<span class="fp-badge warn">Revisi</span>':'<span class="fp-badge info">Belum</span>'}</td>
@@ -1646,6 +1683,10 @@
               Activity.grade(subKey.split('.').pop(), i, sm[j], {nilai:sm[j].nilai, catatan:cv, status, dinilaiPada:sm[j].dinilaiPada}).then(()=>{SubAlerts.check(false);});
             };
             const bindRow=()=>{
+              w.querySelectorAll('[data-prev]').forEach(el=>el.onclick=()=>{
+                const s=sm[+el.dataset.prev];
+                if(s) openViewer((s.nama||'Siswa')+' — '+list[i].j, {file:s.f, text:s.jawaban});
+              });
               w.querySelectorAll('[data-sv]').forEach(el=>el.onclick=()=>commit(+el.dataset.sv,'Selesai'));
               w.querySelectorAll('[data-rv]').forEach(el=>el.onclick=()=>commit(+el.dataset.rv,'Revisi'));
             }; bindRow();
@@ -2215,31 +2256,37 @@
   };
 
   FEATURES.pengaturan = {
-    ico:'⚙️', title:'Database Google Colab & Sinkronisasi', sub:'Hubungkan Google Colab SQLite + Google Drive, bagikan link siswa, dan migrasikan data',
+    ico:'⚙️', title:'Database Google Colab & Sinkronisasi', sub:'Hubungkan Google Colab SQLite + Cloudflare Named Tunnel, kelola token sesi & aplikasi PWA',
     render(b){
       const colabUrl = window.colabDb ? window.colabDb.getUrl() : '';
       const ready = window.colabDb && window.colabDb.isReady();
+      const tok = window.colabDb && window.colabDb.getToken ? window.colabDb.getToken() : (localStorage.getItem('pb.session.token')||'');
       const migrated = localStorage.getItem('pb.migrated.colab.v1') === 'done';
       const shareUrl = colabUrl ? (location.origin + '/?colab=' + encodeURIComponent(colabUrl)) : '';
       b.innerHTML=`
         <div class="fp-card" style="margin-bottom:14px">
           <div class="fp-row" style="justify-content:space-between">
             <div>
-              <h4>Status Database Google Colab SQLite</h4>
-              <p>${ready ? 'Terhubung ke server Google Colab ('+esc(colabUrl)+'). Semua materi, tugas, quiz & nilai tersimpan ke Google Drive.' : 'Mode Lokal (belum dihubungkan ke Google Colab tunnel).'}</p>
+              <h4>Status Database &amp; Session Token Server</h4>
+              <p>${ready ? 'Terhubung ke Google Colab SQLite ('+esc(colabUrl)+').' : 'Mode Lokal (belum dihubungkan ke Google Colab tunnel).'}<br>Token Sesi JWT/HMAC: <b>${tok?'Aktif (terverifikasi server)':'Belum ada — login saat Colab aktif'}</b></p>
             </div>
-            <span class="fp-badge ${ready?'ok':'warn'}">${ready?'🟢 Colab Terhubung':'🟡 Mode Lokal'}</span>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+              <span class="fp-badge ${ready?'ok':'warn'}">${ready?'🟢 Colab Terhubung':'🟡 Mode Lokal'}</span>
+              <span class="fp-badge ${tok?'ok':'info'}">${tok?'🔐 Token Aktif':'🔑 Passphrase'}</span>
+            </div>
           </div>
         </div>
         <div class="fp-card" style="margin-bottom:14px">
-          <h4>URL Public Tunnel Google Colab</h4>
-          <p style="font-size:12px;color:#64748b;margin:4px 0 8px">Jalankan notebook <code>colab/portalbelajar_colab_database.ipynb</code> di Google Colab lalu tempel link tunnel (Cloudflare/Ngrok) di bawah ini:</p>
+          <h4>URL Public / Named Tunnel Permanen Google Colab</h4>
+          <p style="font-size:12px;color:#64748b;margin:4px 0 8px">Jalankan notebook <code>colab/portalbelajar_colab_database.ipynb</code> di Google Colab. Isi <code>CF_TUNNEL_TOKEN</code> di Colab + <code>public/colab-config.json</code> agar URL permanen dan semua siswa terhubung otomatis tanpa link baru:</p>
           <div style="display:grid;gap:10px;margin-top:10px">
-            <div><label class="fp-label">URL Server Colab</label><input class="fp-input" id="cfgUrl" value="${esc(colabUrl)}" placeholder="https://xxxx-xxxx.trycloudflare.com"/></div>
+            <div><label class="fp-label">URL Server Colab</label><input class="fp-input" id="cfgUrl" value="${esc(colabUrl)}" placeholder="https://db.domainanda.my.id atau https://xxxx.trycloudflare.com"/></div>
             <div class="fp-row" style="flex-wrap:wrap;gap:8px">
               <button class="fp-btn sm" id="cfgSave">💾 Simpan &amp; Uji Koneksi</button>
+              <button class="fp-btn sm ghost" id="cfgVerify" ${tok&&ready?'':'disabled'}>🔐 Uji Token Sesi</button>
               <button class="fp-btn sm ghost" id="cfgSync" ${ready?'':'disabled'}>🔄 Migrasi Data Lokal ke Colab</button>
               <button class="fp-btn sm ghost" id="cfgCopyLink" ${shareUrl?'':'disabled'}>📋 Salin Link Siswa</button>
+              ${typeof window.installPortalApp==='function'?`<button class="fp-btn sm ghost" id="cfgPwa">📲 Install Aplikasi (PWA)</button>`:''}
             </div>
             ${shareUrl ? `<div style="font-size:12px;padding:8px 10px;border-radius:8px;border:1px solid #e2e8f0;word-break:break-all"><b>Link Auto-Connect Siswa:</b> <span id="cfgShareTxt">${esc(shareUrl)}</span></div>` : ''}
             <div id="cfgMsg" style="font-size:12.5px;color:#475569"></div>
@@ -2263,6 +2310,19 @@
           setTimeout(()=>FEATURES.pengaturan.render(b), 600);
         }catch(err){ msgEl.textContent='⚠️ URL disimpan, namun server belum merespons: '+(err.message||err); }
       };
+      const verBtn=b.querySelector('#cfgVerify');
+      if(verBtn && window.colabDb && window.colabDb.auth.verifyToken){
+        verBtn.onclick=async()=>{
+          const msgEl=b.querySelector('#cfgMsg');
+          msgEl.textContent='⏳ Memeriksa token JWT sesi...';
+          try{
+            const v=await window.colabDb.auth.verifyToken();
+            msgEl.textContent='✅ Token Sesi Valid! Peran: '+v.role+' · Berlaku s.d '+new Date(v.expiresAt*1000).toLocaleString('id-ID');
+          }catch(e){ msgEl.textContent='⚠️ Token tidak valid atau kedaluwarsa: '+(e.message||e); }
+        };
+      }
+      const pwaBtn=b.querySelector('#cfgPwa');
+      if(pwaBtn) pwaBtn.onclick=()=>window.installPortalApp();
       const copyBtn=b.querySelector('#cfgCopyLink');
       if(copyBtn){
         copyBtn.onclick=async()=>{
@@ -2750,6 +2810,203 @@
   }
 
   // inference map for murid nav text
+  // ── Leaderboard & Lencana (Gamifikasi Siswa) ──
+  FEATURES.leaderboard = {
+    ico:'🏆', title:'Leaderboard & Lencana', sub:'Peringkat XP game, ketuntasan tugas/quiz & lencana prestasi siswa',
+    async render(b){
+      const myNis = localStorage.getItem('pb.murid.nis') || '';
+      const myClass = ROLE==='murid' ? (getMyClass()||'ALL') : (this._cls || 'ALL');
+      b.innerHTML = `<div class="fp-empty">Memuat papan peringkat...</div>`;
+
+      const computeLocal = (clsFilter) => {
+        const board = {};
+        const accs = LS.get('pb.murid.accounts', []);
+        (Array.isArray(accs)?accs:[]).forEach(a=>{
+          if(!a||!a.nis) return;
+          board[a.nis] = {nis:a.nis,nama:a.nama||'Siswa',kelas:canonicalClass(a.kelas)||'-',xp:0,doneCount:0,scores:[]};
+        });
+        ['tugas','lkpd','quiz'].forEach(jenis=>{
+          const map = LS.get('pb.submissions.'+jenis, {});
+          Object.entries(map||{}).forEach(([ik, arr])=>{
+            (arr||[]).forEach(e=>{
+              if(!e) return;
+              const uid = String(e.userId||e.nis||'').trim();
+              if(!uid || uid==='me') return;
+              if(!board[uid]) board[uid] = {nis:uid,nama:e.nama||'Siswa',kelas:canonicalClass(e.kelas)||'-',xp:0,doneCount:0,scores:[]};
+              if(jenis==='lkpd' && ik==='game-progress'){
+                board[uid].xp = Math.max(board[uid].xp, +e.xp||0);
+              } else {
+                board[uid].doneCount++;
+                if(e.nilai!=null && !isNaN(+e.nilai)) board[uid].scores.push(+e.nilai);
+              }
+            });
+          });
+        });
+        const kf = String(clsFilter||'ALL').toUpperCase();
+        return Object.values(board).filter(r=>kf==='ALL'||r.kelas.toUpperCase()===kf).map(r=>{
+          const avg = r.scores.length ? Math.round((r.scores.reduce((a,b)=>a+b,0)/r.scores.length)*10)/10 : 0;
+          const points = r.xp + r.doneCount*25 + Math.round(avg);
+          const badges = [];
+          if(r.xp>=100) badges.push('🎮 Master Game');
+          if(r.doneCount>=3) badges.push('🔥 Rajin Belajar');
+          if(avg>=85 && r.scores.length) badges.push('⭐ Nilai Tinggi');
+          if(r.doneCount>=1) badges.push('⚡ Penakluk Quiz');
+          return {nis:r.nis,nama:r.nama,kelas:r.kelas,xp:r.xp,doneCount:r.doneCount,avgScore:avg,points,badges};
+        }).sort((a,b)=>b.points-a.points||b.xp-a.xp);
+      };
+
+      let list = [];
+      if(window.colabDb && window.colabDb.isReady() && window.colabDb.leaderboard){
+        try{
+          const res = await window.colabDb.leaderboard.get(myClass==='ALL'?null:myClass);
+          if(res && Array.isArray(res.leaderboard)) list = res.leaderboard;
+        }catch(_){}
+      }
+      if(!list.length) list = computeLocal(myClass);
+
+      const top3 = list.slice(0,3);
+      const clsOpts = ['ALL', ...ALL_CLASSES];
+      b.innerHTML = `
+        <div class="fp-row" style="justify-content:space-between;margin-bottom:14px">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <label class="fp-label" style="margin:0">Filter Kelas:</label>
+            <select class="fp-select" id="lbCls" style="width:170px">${clsOpts.map(c=>`<option value="${c}" ${c===myClass?'selected':''}>${c==='ALL'?'Semua Kelas':c}</option>`).join('')}</select>
+          </div>
+          <span class="fp-badge info">Total ${list.length} siswa</span>
+        </div>
+        ${top3.length?`<div class="fp-grid c3" style="margin-bottom:16px">${top3.map((r,idx)=>`
+          <div class="fp-card" style="text-align:center;border-color:${idx===0?'#f59e0b':idx===1?'#94a3b8':'#d97706'}">
+            <div style="font-size:32px">${['🥇','🥈','🥉'][idx]}</div>
+            <h4 style="margin-top:4px">${esc(r.nama)}</h4>
+            <div style="font-size:12px;color:#64748b;margin-bottom:6px">${esc(r.kelas)}</div>
+            <div style="font-size:20px;font-weight:800;color:#4f46e5">${r.points} poin</div>
+            <div style="font-size:11.5px;color:#64748b;margin:4px 0 8px">✨ ${r.xp} XP · ✅ ${r.doneCount} selesai · Rata ${r.avgScore||'-'}</div>
+            <div style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap">${(r.badges||[]).map(bg=>`<span class="fp-badge ok" style="font-size:10px">${esc(bg)}</span>`).join('')||'<span class="fp-badge info" style="font-size:10px">🌱 Pemula</span>'}</div>
+          </div>`).join('')}</div>`:''}
+        <div class="fp-card">
+          <h4>Peringkat Lengkap</h4>
+          ${list.length?`<div style="overflow:auto"><table class="fp-table"><thead><tr><th>#</th><th>Nama</th><th>Kelas</th><th>Total Poin</th><th>XP Game</th><th>Tuntas</th><th>Rata Nilai</th><th>Lencana</th></tr></thead><tbody>
+          ${list.map((r,idx)=>{const me=myNis && r.nis===myNis; return `<tr style="${me?'background:rgba(79,70,229,.08);font-weight:700':''}">
+            <td>${idx<3?['🥇','🥈','🥉'][idx]:'#'+(idx+1)}</td>
+            <td>${esc(r.nama)}${me?' <span class="fp-badge info" style="font-size:10px">Kamu</span>':''}</td>
+            <td>${esc(r.kelas)}</td><td><b>${r.points}</b></td><td>${r.xp}</td><td>${r.doneCount}</td><td>${r.avgScore||'-'}</td>
+            <td>${(r.badges||[]).map(bg=>`<span class="fp-badge ok" style="font-size:10px;margin:2px">${esc(bg)}</span>`).join('')||'-'}</td>
+          </tr>`;}).join('')}</tbody></table></div>`:'<div class="fp-empty">Belum ada data poin/aktivitas siswa.</div>'}
+        </div>`;
+      b.querySelector('#lbCls').onchange = e => { this._cls = e.target.value; FEATURES.leaderboard.render(b); };
+    }
+  };
+
+  // ── Bank Media Sekolah (Upload, Preview & Salin Link Materi) ──
+  FEATURES.mediaBank = {
+    ico:'🗂️', title:'Bank Media & Lampiran', sub:'Kelola berkas materi/gambar di Google Colab & pratinjau langsung',
+    async render(b){
+      const myCls = ROLE==='murid' ? (getMyClass()||'ALL') : (this._cls || 'ALL');
+      b.innerHTML = `<div class="fp-empty">Memuat daftar media...</div>`;
+      let cloudFiles = [];
+      if(window.colabDb && window.colabDb.isReady() && window.colabDb.files && window.colabDb.files.list){
+        try{
+          const res = await window.colabDb.files.list(myCls);
+          if(res && Array.isArray(res.files)) cloudFiles = res.files;
+        }catch(_){}
+      }
+      // Gabungkan juga lampiran dari materi/tugas/lkpd lokal
+      const catalogFiles = [];
+      ['materi','tugas','lkpd'].forEach(tp=>{
+        (LS.get(SK(tp),[])||[]).forEach(item=>{
+          if(!item || !item.f) return;
+          if(myCls!=='ALL' && !matchesClass(item.k||'ALL', myCls)) return;
+          catalogFiles.push({
+            source: tp.toUpperCase(),
+            title: item.j,
+            kelas: item.k||'ALL',
+            name: item.f.name||'lampiran',
+            mimeType: item.f.type||'',
+            size: item.f.size||0,
+            fileObj: item.f
+          });
+        });
+      });
+
+      b.innerHTML = `
+        ${ROLE==='guru'?`<div class="fp-card" style="margin-bottom:14px">
+          <h4>⬆️ Unggah Media Baru ke Server Google Colab</h4>
+          <p style="font-size:12px;color:#64748b;margin:4px 0 10px">Foto otomatis dikompresi sebelum disimpan agar hemat ruang Drive dan cepat dibuka siswa.</p>
+          <div class="fp-row">
+            <select class="fp-select" id="mbUpCls" style="width:150px"><option value="ALL">Semua Kelas</option>${ALL_CLASSES.map(c=>`<option value="${c}">${c}</option>`).join('')}</select>
+            <input type="file" id="mbUpFile" class="fp-input" style="flex:1;min-width:220px"/>
+            <button class="fp-btn sm" id="mbUpBtn">Unggah Media</button>
+          </div>
+          <div id="mbMsg" style="font-size:12.5px;margin-top:8px;color:#475569"></div>
+        </div>`:''}
+        <div class="fp-row" style="justify-content:space-between;margin-bottom:12px">
+          <div class="fp-row"><label class="fp-label" style="margin:0">Filter Kelas:</label><select class="fp-select" id="mbCls" style="width:165px"><option value="ALL" ${myCls==='ALL'?'selected':''}>Semua Kelas</option>${ALL_CLASSES.map(c=>`<option value="${c}" ${c===myCls?'selected':''}>${c}</option>`).join('')}</select></div>
+          <span class="fp-badge info">${cloudFiles.length} Cloud · ${catalogFiles.length} Lampiran Katalog</span>
+        </div>
+        <div class="fp-card" style="margin-bottom:14px">
+          <h4>☁️ Berkas di Google Colab / Drive (${cloudFiles.length})</h4>
+          <div class="fp-list" style="margin-top:10px">
+            ${cloudFiles.map((f,idx)=>`<div class="fp-item">
+              <div><div class="t">📄 ${esc(f.name)}</div><div class="m">Kelas ${esc(f.kelas||'ALL')} · ${fmtSize(f.size||0)}</div></div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <button class="fp-btn sm ghost" data-cf="${idx}">👁️ Preview</button>
+                <button class="fp-btn sm ghost" data-cp="${esc(f.viewLink||f.previewLink||'')}">📋 Salin Link</button>
+                <a class="fp-btn sm" href="${esc(f.downloadLink||f.viewLink||'#')}" target="_blank" rel="noopener">⬇️ Unduh</a>
+              </div>
+            </div>`).join('')||'<div class="fp-empty" style="padding:18px">Belum ada media terunggah ke server Colab.</div>'}
+          </div>
+        </div>
+        <div class="fp-card">
+          <h4>📚 Lampiran di Materi, Tugas &amp; LKPD (${catalogFiles.length})</h4>
+          <div class="fp-list" style="margin-top:10px">
+            ${catalogFiles.map((f,idx)=>`<div class="fp-item">
+              <div><div class="t">${esc(f.name)}</div><div class="m">${esc(f.source)} · ${esc(f.title)} · ${esc(f.kelas)} · ${fmtSize(f.size)}</div></div>
+              <button class="fp-btn sm ghost" data-kf="${idx}">👁️ Preview</button>
+            </div>`).join('')||'<div class="fp-empty" style="padding:18px">Belum ada lampiran di katalog lokal.</div>'}
+          </div>
+        </div>`;
+      b.querySelector('#mbCls').onchange = e => { this._cls = e.target.value; FEATURES.mediaBank.render(b); };
+      b.querySelectorAll('[data-cf]').forEach(btn=>btn.onclick=()=>{
+        const f = cloudFiles[+btn.dataset.cf];
+        if(f) openViewer(f.name, {file:{name:f.name,type:f.mimeType,viewLink:f.viewLink,previewLink:f.previewLink,downloadLink:f.downloadLink}, link:f.viewLink});
+      });
+      b.querySelectorAll('[data-cp]').forEach(btn=>btn.onclick=async()=>{
+        const u=btn.dataset.cp; if(!u) return;
+        try{ await navigator.clipboard.writeText(u); btn.textContent='✓ Disalin'; setTimeout(()=>btn.textContent='📋 Salin Link',1200); }catch(_){ prompt('Salin link media:',u); }
+      });
+      b.querySelectorAll('[data-kf]').forEach(btn=>btn.onclick=()=>{
+        const f = catalogFiles[+btn.dataset.kf];
+        if(f) openViewer(f.title, {file:f.fileObj});
+      });
+      const upBtn = b.querySelector('#mbUpBtn');
+      if(upBtn){
+        upBtn.onclick = async ()=>{
+          const inp = b.querySelector('#mbUpFile');
+          const msg = b.querySelector('#mbMsg');
+          const file = inp && inp.files && inp.files[0];
+          if(!file) return alert('Pilih berkas terlebih dulu.');
+          if(!window.colabDb || !window.colabDb.isReady()) return alert('Hubungkan server Google Colab SQLite di Cloud & Sync terlebih dahulu.');
+          upBtn.disabled=true; msg.textContent='⏳ Mengunggah berkas ke Google Colab...';
+          try{
+            let targetFile = file;
+            if(/^image\/(jpeg|jpg|png|webp)$/i.test(file.type||'')){
+              const comp = await compressImage(file);
+              if(comp && comp.data && comp.data.startsWith('data:')){
+                const blob = await (await fetch(comp.data)).blob();
+                targetFile = new File([blob], comp.name, {type:'image/jpeg'});
+              }
+            }
+            const pass = localStorage.getItem('pb.guru.passphrase')||'';
+            await window.colabDb.files.upload(targetFile, b.querySelector('#mbUpCls').value, pass);
+            msg.textContent='✅ Berhasil diunggah ke Google Colab!';
+            setTimeout(()=>FEATURES.mediaBank.render(b), 500);
+          }catch(e){ msg.textContent='⚠️ Gagal: '+(e.message||e); }
+          finally{ upBtn.disabled=false; }
+        };
+      }
+    }
+  };
+
   // ── Progres game siswa (guru/admin): rekap level, poin, soal terjawab per kelas ──
   FEATURES.progres = {ico:'📈', title:'Progres Siswa', sub:'Rekap hasil belajar dan permainan per kelas', render:renderResults};
   // ── Progres saya (siswa): level, poin, soal terjawab milik sendiri ──
@@ -2774,7 +3031,7 @@
     }
   };
 
-  const MURID_MAP = {dashboard:'dashboard','kelas saya':'kelas',materi:'materi',tugas:'tugas',quiz:'quiz',lkpd:'lkpd',nilai:'nilai',jadwal:'jadwal',ai:'ai',pengumuman:'pengumuman','progres saya':'progres_saya','progres':'progres_saya'};
+  const MURID_MAP = {dashboard:'dashboard','kelas saya':'kelas',materi:'materi',tugas:'tugas',quiz:'quiz',lkpd:'lkpd',nilai:'nilai',jadwal:'jadwal',ai:'ai',pengumuman:'pengumuman','progres saya':'progres_saya','progres':'progres_saya',leaderboard:'leaderboard','bank media':'mediaBank',mediabank:'mediaBank'};
 
   // ── Deep-link guard: notifikasi jelas bila murid coba akses kelas lain via URL / hash ──
   // Contoh URL yang dijaga:
@@ -2851,6 +3108,8 @@
         else if(t.startsWith('pengumuman')) feat='pengumuman';
         else if(t.startsWith('progres saya')) feat='progres_saya';
         else if(t.startsWith('progres siswa')) feat='progres';
+        else if(t.startsWith('leaderboard')) feat='leaderboard';
+        else if(t.startsWith('bank media')) feat='mediaBank';
         else if(t.startsWith('skill')) feat='skill';
         else if(t.startsWith('kelola fitur')) feat='modul';
         if(feat) el.dataset.feature=feat;
