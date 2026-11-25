@@ -390,9 +390,23 @@
         });
         localStorage.setItem(initKey, '1');
       }
-      const cachedAcc = LS.get('pb.cached.accounts', null);
-      if(!cachedAcc || (Array.isArray(cachedAcc) && cachedAcc.length===0)){
-        LS.set('pb.cached.accounts', DEFAULT_ACCOUNTS);
+      if(!localStorage.getItem('pb.accounts.seeded_v2')){
+        const cachedAcc = LS.get('pb.cached.accounts', null);
+        if(!cachedAcc || (Array.isArray(cachedAcc) && cachedAcc.length===0)){
+          LS.set('pb.cached.accounts', DEFAULT_ACCOUNTS);
+        }
+        localStorage.setItem('pb.accounts.seeded_v2', '1');
+      }
+      // Bersihkan duplikat NIS yang mungkin sempat tersimpan sebelumnya
+      const existingAcc = LS.get('pb.cached.accounts', null);
+      if(Array.isArray(existingAcc)){
+        const seen = new Set();
+        const deduped = existingAcc.filter(a=>{
+          const k = String(a&&a.nis||'').trim();
+          if(!k || seen.has(k)) return false;
+          seen.add(k); return true;
+        });
+        if(deduped.length !== existingAcc.length) LS.set('pb.cached.accounts', deduped);
       }
     } catch(_){}
   })();
@@ -665,7 +679,56 @@
     }
   };
 
-  // ── Akun siswa (guru): dibuat & disimpan di Google Drive, password ter-hash ──
+  // ── Akun siswa (guru): dibuat & disimpan di Google Drive / Colab / cache lokal ──
+  const dedupeAccounts = (arr) => {
+    const map = new Map();
+    (Array.isArray(arr) ? arr : []).forEach(a => {
+      if (!a) return;
+      const nis = String(a.nis || '').trim();
+      if (!nis) return;
+      const prev = map.get(nis);
+      if (!prev || ((+a.terakhirMasuk || 0) >= (+prev.terakhirMasuk || 0))) {
+        map.set(nis, { ...prev, ...a, nis });
+      }
+    });
+    return [...map.values()];
+  };
+  const readCachedAccounts = () => {
+    const raw = LS.get('pb.cached.accounts', null);
+    if (Array.isArray(raw)) {
+      const clean = dedupeAccounts(raw);
+      if (clean.length !== raw.length) LS.set('pb.cached.accounts', clean);
+      return clean;
+    }
+    if (localStorage.getItem('pb.accounts.seeded_v2')) return [];
+    return [...DEFAULT_ACCOUNTS];
+  };
+  const mutateLocalAccounts = (body) => {
+    localStorage.setItem('pb.accounts.seeded_v2', '1');
+    let cur = readCachedAccounts();
+    const act = body && body.action;
+    if (act === 'delete') {
+      const targetNis = String(body.nis || '').trim();
+      cur = cur.filter(a => String(a && a.nis || '').trim() !== targetNis);
+    } else if (act === 'bulk' && Array.isArray(body.accounts)) {
+      body.accounts.forEach(row => {
+        const nis = String(row && row.nis || '').trim();
+        if (!nis) return;
+        const idx = cur.findIndex(x => String(x.nis).trim() === nis);
+        const rec = { nis, nama: String(row.nama || nis), kelas: canonicalClass(row.kelas) || row.kelas, terakhirMasuk: row.terakhirMasuk || (idx >= 0 ? cur[idx].terakhirMasuk : null) };
+        if (idx >= 0) cur[idx] = { ...cur[idx], ...rec }; else cur.push(rec);
+      });
+    } else if (body && body.nis) {
+      const nis = String(body.nis).trim();
+      const idx = cur.findIndex(x => String(x.nis).trim() === nis);
+      const rec = { nis, nama: String(body.nama || nis), kelas: canonicalClass(body.kelas) || body.kelas, terakhirMasuk: idx >= 0 ? cur[idx].terakhirMasuk : null };
+      if (idx >= 0) cur[idx] = { ...cur[idx], ...rec }; else cur.push(rec);
+    }
+    cur = dedupeAccounts(cur);
+    LS.set('pb.cached.accounts', cur);
+    return cur;
+  };
+
   const Accounts = {
     pass(force){
       let p = localStorage.getItem('pb.guru.passphrase') || '';
@@ -678,26 +741,27 @@
     },
     // Sekali gagal karena passphrase, minta ulang lalu coba lagi otomatis.
     async call(init, retry){
+      const isPost = !!(init && init.method === 'POST');
+      const postBody = isPost ? JSON.parse(init.body || '{}') : null;
       try {
         const pass = this.pass(retry);
-        if(!pass && ROLE==='guru') return (LS.get('pb.cached.accounts', []) || []).concat(DEFAULT_ACCOUNTS);
+        if(!pass && ROLE==='guru') return isPost ? mutateLocalAccounts(postBody) : readCachedAccounts();
         if(window.colabDb && window.colabDb.isReady()){
           try{
-            const j = (init && init.method === 'POST')
-              ? await window.colabDb.accounts.mutate(JSON.parse(init.body || '{}'), pass||'')
+            const j = isPost
+              ? await window.colabDb.accounts.mutate(postBody, pass||'')
               : await window.colabDb.accounts.list(pass||'');
-            const remote = j.accounts||[];
-            if(remote.length > 0) {
-              LS.set('pb.cached.accounts', remote);
-              return remote;
-            }
-            return (init && init.method === 'POST') ? [] : (LS.get('pb.cached.accounts', []) || []).concat(DEFAULT_ACCOUNTS);
+            const remote = dedupeAccounts(j.accounts||[]);
+            localStorage.setItem('pb.accounts.seeded_v2', '1');
+            LS.set('pb.cached.accounts', remote);
+            return remote;
           }catch(colErr){
             if(colErr && colErr.status===401){
               localStorage.removeItem('pb.guru.passphrase');
               if(!retry) return this.call(init, true);
               throw new Error(colErr.message||'Passphrase guru salah.');
             }
+            if(isPost) return mutateLocalAccounts(postBody);
             throw colErr;
           }
         }
@@ -708,7 +772,7 @@
         });
         const ct = r.headers.get('content-type') || '';
         if(r.status===404 || (r.ok && !ct.includes('json'))){
-          return (LS.get('pb.cached.accounts', []) || []).concat(DEFAULT_ACCOUNTS);
+          return isPost ? mutateLocalAccounts(postBody) : readCachedAccounts();
         }
         const j = await r.json().catch(()=>({}));
         if(r.status===401){
@@ -717,15 +781,13 @@
           throw new Error(j.error||'Passphrase guru salah.');
         }
         if(!r.ok) throw new Error(j.error||('Gagal memproses akun ('+r.status+')'));
-        const remote = j.accounts||[];
-        if(remote.length > 0) {
-          LS.set('pb.cached.accounts', remote);
-          return remote;
-        }
-        return (LS.get('pb.cached.accounts', []) || []).concat(DEFAULT_ACCOUNTS);
+        const remote = dedupeAccounts(j.accounts||[]);
+        localStorage.setItem('pb.accounts.seeded_v2', '1');
+        LS.set('pb.cached.accounts', remote);
+        return remote;
       } catch(err) {
-        if(init && init.method==='POST') throw err;
-        return (LS.get('pb.cached.accounts', []) || []).concat(DEFAULT_ACCOUNTS);
+        if(isPost && err && /Passphrase|401|salah/i.test(String(err.message||''))) throw err;
+        return isPost ? mutateLocalAccounts(postBody) : readCachedAccounts();
       }
     },
     list(){ return this.call({}); },
@@ -2820,7 +2882,7 @@
 
       const computeLocal = (clsFilter) => {
         const board = {};
-        const accs = LS.get('pb.murid.accounts', []);
+        const accs = readCachedAccounts();
         (Array.isArray(accs)?accs:[]).forEach(a=>{
           if(!a||!a.nis) return;
           board[a.nis] = {nis:a.nis,nama:a.nama||'Siswa',kelas:canonicalClass(a.kelas)||'-',xp:0,doneCount:0,scores:[]};
