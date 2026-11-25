@@ -175,6 +175,22 @@ const matchesKelas=(qk,my)=>{
   });
 };
 async function load(){
+  const rawRole=rd('userRole');
+  const role=String(rawRole||'').replace(/^"|"$/g,'').trim();
+  const isStaff=['guru','admin'].includes(role)&&!!localStorage.getItem('pb.guru.passphrase');
+  const isStudent=['siswa','murid'].includes(role)&&!!(localStorage.getItem('pb.murid.nis')||localStorage.getItem('pb.murid.nama'));
+  if(!isStaff&&!isStudent){
+    app.innerHTML=`<div class="card" style="max-width:520px;margin:64px auto;text-align:center;padding:34px 26px;border-color:#ffcb0588">
+      <div style="font-size:52px;margin-bottom:10px">🔒</div>
+      <h1 class="f" style="margin:0 0 10px">Login Diperlukan</h1>
+      <p style="opacity:.9;line-height:1.65;margin:0 0 22px">Arena 12 Game Quiz tidak dapat dimainkan sebelum masuk ke akun Portal Belajar. Silakan login terlebih dahulu sebagai Siswa, Guru, atau Admin.</p>
+      <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+        <a class="btn" href="/portal-belajar.html?login=1&next=${encodeURIComponent('/game-quiz.html'+location.search)}" style="text-decoration:none">Masuk ke Portal &rarr;</a>
+        <a class="btn ghost" href="/portal-belajar.html#mapel" style="text-decoration:none">📚 Buka Materi Jenjang</a>
+      </div>
+    </div>`;
+    return;
+  }
   app.innerHTML='<h2 class="f">Memuat quiz…</h2>';
   try{
     if(window.colabDb && window.colabDb.isReady()){

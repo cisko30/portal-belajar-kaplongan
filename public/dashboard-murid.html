@@ -1,6 +1,25 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
+<script>
+// Wajib login siswa (atau guru/admin) sebelum membuka Dashboard Murid.
+(function(){
+  try{
+    var rawRole=localStorage.getItem('userRole')||'';
+    if(rawRole.charAt(0)==='"') rawRole=JSON.parse(rawRole);
+    var role=String(rawRole||'').trim();
+    var isStaff=(role==='guru'||role==='admin')&&!!localStorage.getItem('pb.guru.passphrase');
+    var isStudent=(role==='siswa'||role==='murid')&&!!(localStorage.getItem('pb.murid.nis')||localStorage.getItem('pb.murid.nama'));
+    if(!isStaff&&!isStudent){
+      document.documentElement.style.visibility='hidden';
+      location.replace('/portal-belajar.html?login=1&next='+encodeURIComponent('/dashboard-murid.html'+location.search));
+    }
+  }catch(e){
+    document.documentElement.style.visibility='hidden';
+    location.replace('/portal-belajar.html?login=1');
+  }
+})();
+</script>
 <!-- skill:chrome -->
 <style>
 /* Credit line — bottom-right */

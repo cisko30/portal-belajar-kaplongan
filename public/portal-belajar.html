@@ -1347,6 +1347,33 @@
       text-decoration: underline;
     }
 
+    .lock-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(245, 158, 11, .16);
+      color: #fde68a;
+      border: 1px solid rgba(251, 191, 36, .35);
+    }
+
+    .fitur-sec .lock-pill {
+      background: var(--warn-l);
+      color: #b45309;
+      border-color: rgba(245, 158, 11, .35);
+    }
+
+    html[data-theme="dark"] .fitur-sec .lock-pill {
+      color: #fde68a;
+    }
+
+    body.is-authed .lock-pill {
+      display: none !important;
+    }
+
     /* ── RESPONSIVE ── */
     @media(max-width:1024px) {
       .nav-links {
@@ -1412,8 +1439,10 @@
       <a class="nav-link" href="#mapel">Materi &amp; Video</a>
       <a class="nav-link" href="#arena">🎮 12 Game</a>
       <a class="nav-link" href="#fitur">⚡ Fitur</a>
-      <a class="nav-link" href="/dashboard-murid.html">🎓 Siswa</a>
-      <a class="nav-link" href="/dashboard-guru.html">👨‍🏫 Guru</a>
+      <a class="nav-link" href="/dashboard-murid.html"
+        onclick="return requirePortalAccess('/dashboard-murid.html','Dashboard Siswa','siswa')">🎓 Siswa</a>
+      <a class="nav-link" href="/dashboard-guru.html"
+        onclick="return requirePortalAccess('/dashboard-guru.html','Dashboard Guru','guru')">👨‍🏫 Guru</a>
     </div>
     <div class="nav-right">
       <a class="colab-pill" id="colabStatusPill" href="/auth.html" title="Status Sinkronisasi Google Colab SQLite">
@@ -1428,12 +1457,15 @@
   </nav>
   <div class="mob-drawer" id="mobDrawer">
     <a href="#beranda" onclick="toggleMobileNav(false)">🏠 Beranda</a>
-    <a href="#mapel" onclick="toggleMobileNav(false)">📚 Materi &amp; Video per Jenjang</a>
-    <a href="#arena" onclick="toggleMobileNav(false)">🎮 Arena 12 Game Quiz</a>
+    <a href="#mapel" onclick="toggleMobileNav(false)">📚 Materi &amp; Video per Jenjang (Gratis)</a>
+    <a href="#arena" onclick="toggleMobileNav(false)">🎮 Info 12 Arena Game Quiz</a>
     <a href="#fitur" onclick="toggleMobileNav(false)">⚡ Ekosistem Fitur Portal</a>
-    <a href="/game-quiz.html">🕹️ Langsung Main Game Quiz</a>
-    <a href="/dashboard-murid.html">🎓 Dashboard Siswa</a>
-    <a href="/dashboard-guru.html">👨‍🏫 Dashboard Guru</a>
+    <a href="/game-quiz.html"
+      onclick="toggleMobileNav(false);return requirePortalAccess('/game-quiz.html','Arena Game Quiz','siswa')">🕹️ Main Game Quiz 🔒</a>
+    <a href="/dashboard-murid.html"
+      onclick="toggleMobileNav(false);return requirePortalAccess('/dashboard-murid.html','Dashboard Siswa','siswa')">🎓 Dashboard Siswa 🔒</a>
+    <a href="/dashboard-guru.html"
+      onclick="toggleMobileNav(false);return requirePortalAccess('/dashboard-guru.html','Dashboard Guru','guru')">👨‍🏫 Dashboard Guru 🔒</a>
     <a href="/auth.html">🔐 Koneksi Google Colab &amp; Akun</a>
     <button onclick="toggleMobileNav(false);openLogin()"
       style="background:var(--p);color:#fff;border-color:var(--p);text-align:center;">Masuk Portal &rarr;</button>
@@ -1453,7 +1485,8 @@
         <div class="hero-btns">
           <button class="btn btn-primary" onclick="openLogin()" style="padding:11px 22px;font-size:13.5px">Masuk ke Portal &rarr;</button>
           <a class="btn btn-ghost" href="/game-quiz.html"
-            style="padding:11px 18px;font-size:13.5px;background:var(--surf);border-color:var(--bd)">🎮 Main 12 Game Quiz</a>
+            onclick="return requirePortalAccess('/game-quiz.html','Arena Game Quiz','siswa')"
+            style="padding:11px 18px;font-size:13.5px;background:var(--surf);border-color:var(--bd)">🎮 Main 12 Game Quiz 🔒</a>
           <a class="btn btn-ghost" href="/auth.html"
             style="padding:11px 18px;font-size:13.5px;background:var(--surf);border-color:var(--bd)">🔐 Akun Cloud</a>
         </div>
@@ -1967,28 +2000,35 @@
   <!-- ARENA GAME QUIZ SHOWCASE -->
   <section class="arena-sec" id="arena">
     <div class="sec-inner">
-      <div class="sec-eye">🎮 Arena Game Interaktif</div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+        <div class="sec-eye" style="margin-bottom:0">🎮 Arena Game Interaktif</div>
+        <span class="lock-pill">🔒 Login untuk bermain</span>
+      </div>
       <h2 class="sec-title">12 Mode Game Quiz + Generator AI 50 Soal</h2>
       <p class="sec-desc">Belajar sambil berkompetisi! Pilih dari 12 mode permainan seru termasuk 4 arena terbaru —
         lengkap dengan soal pilihan ganda otomatis hingga 50 soal per sesi dan dukungan multi-kelas (VIII-A s.d XII-4).</p>
 
       <div class="arena-spot">
-        <a class="acard" href="/game-quiz.html">
+        <a class="acard" href="/game-quiz.html"
+          onclick="return requirePortalAccess('/game-quiz.html','Arena Petualangan Bonus','siswa')">
           <div class="acard-top"><span class="acard-ico">🎁</span><span class="acard-new">Baru</span></div>
           <div class="acard-t">Petualangan Bonus</div>
           <div class="acard-d">Jelajahi papan harta, buka peti misteri pengali skor, dan rebut koin tertinggi!</div>
         </a>
-        <a class="acard" href="/game-quiz.html">
+        <a class="acard" href="/game-quiz.html"
+          onclick="return requirePortalAccess('/game-quiz.html','Arena Pertahanan Menara','siswa')">
           <div class="acard-top"><span class="acard-ico">🗼</span><span class="acard-new">Baru</span></div>
           <div class="acard-t">Pertahanan Menara</div>
           <div class="acard-d">Jawab tepat untuk bangun meriam energi dan tahan serangan gelombang musuh.</div>
         </a>
-        <a class="acard" href="/game-quiz.html">
+        <a class="acard" href="/game-quiz.html"
+          onclick="return requirePortalAccess('/game-quiz.html','Arena Roda Keberuntungan','siswa')">
           <div class="acard-top"><span class="acard-ico">🎡</span><span class="acard-new">Baru</span></div>
           <div class="acard-t">Roda Keberuntungan</div>
           <div class="acard-d">Putar roda bonus 2x–5x poin, jackpot misteri, dan tantangan kecepatan tiap ronde.</div>
         </a>
-        <a class="acard" href="/game-quiz.html">
+        <a class="acard" href="/game-quiz.html"
+          onclick="return requirePortalAccess('/game-quiz.html','Arena Duel Bos Raksasa','siswa')">
           <div class="acard-top"><span class="acard-ico">👹</span><span class="acard-new">Baru</span></div>
           <div class="acard-t">Duel Bos Raksasa</div>
           <div class="acard-d">Kumpulkan kombo jawaban benar untuk melancarkan serangan kritis ke Bos Cyber!</div>
@@ -1997,19 +2037,23 @@
 
       <div class="arena-chips">
         <span style="font-size:12px;font-weight:700;color:#94a3b8;margin-right:4px">8 Mode Klasik Lainnya:</span>
-        <a class="achip" href="/game-quiz.html">🏆 Classic</a>
-        <a class="achip" href="/game-quiz.html">🏰 Tower</a>
-        <a class="achip" href="/game-quiz.html">🏭 Factory</a>
-        <a class="achip" href="/game-quiz.html">🎣 Fishing</a>
-        <a class="achip" href="/game-quiz.html">🪙 Crypto</a>
-        <a class="achip" href="/game-quiz.html">⚔️ Battle</a>
-        <a class="achip" href="/game-quiz.html">☕ Cafe</a>
-        <a class="achip" href="/game-quiz.html">🏁 Racing</a>
+        <a class="achip" href="/game-quiz.html" onclick="return requirePortalAccess('/game-quiz.html','Arena Classic','siswa')">🏆 Classic</a>
+        <a class="achip" href="/game-quiz.html" onclick="return requirePortalAccess('/game-quiz.html','Arena Tower','siswa')">🏰 Tower</a>
+        <a class="achip" href="/game-quiz.html" onclick="return requirePortalAccess('/game-quiz.html','Arena Factory','siswa')">🏭 Factory</a>
+        <a class="achip" href="/game-quiz.html" onclick="return requirePortalAccess('/game-quiz.html','Arena Fishing','siswa')">🎣 Fishing</a>
+        <a class="achip" href="/game-quiz.html" onclick="return requirePortalAccess('/game-quiz.html','Arena Crypto','siswa')">🪙 Crypto</a>
+        <a class="achip" href="/game-quiz.html" onclick="return requirePortalAccess('/game-quiz.html','Arena Battle','siswa')">⚔️ Battle</a>
+        <a class="achip" href="/game-quiz.html" onclick="return requirePortalAccess('/game-quiz.html','Arena Cafe','siswa')">☕ Cafe</a>
+        <a class="achip" href="/game-quiz.html" onclick="return requirePortalAccess('/game-quiz.html','Arena Racing','siswa')">🏁 Racing</a>
       </div>
 
       <div class="arena-cta">
-        <a class="btn-w" href="/game-quiz.html" style="text-decoration:none">🎮 Buka Arena Game Quiz &rarr;</a>
-        <a class="btn-ow" href="/dashboard-guru.html" style="text-decoration:none">⚙️ Kelola Paket Game Guru</a>
+        <a class="btn-w" href="/game-quiz.html"
+          onclick="return requirePortalAccess('/game-quiz.html','Arena Game Quiz','siswa')"
+          style="text-decoration:none">🎮 Buka Arena Game Quiz &rarr;</a>
+        <a class="btn-ow" href="/game-quiz.html?kelola=1"
+          onclick="return requirePortalAccess('/game-quiz.html?kelola=1','Kelola Paket Game Guru','guru')"
+          style="text-decoration:none">⚙️ Kelola Paket Game Guru</a>
       </div>
     </div>
   </section>
@@ -2017,7 +2061,10 @@
   <!-- FITUR EKOSISTEM -->
   <section class="fitur-sec" id="fitur">
     <div class="sec-inner">
-      <div class="sec-eye">⚡ Ekosistem Terpadu</div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
+        <div class="sec-eye" style="margin-bottom:0">⚡ Ekosistem Terpadu</div>
+        <span class="lock-pill">🔒 Login untuk membuka</span>
+      </div>
       <h2 class="sec-title">Satu Portal untuk Siswa, Guru &amp; Sync Cloud</h2>
       <p class="sec-desc">Dirancang khusus untuk kebutuhan pembelajaran Informatika &amp; KKA di SMA NU Kaplongan —
         dari manajemen materi per mapel hingga evaluasi keterampilan digital.</p>
@@ -2035,7 +2082,8 @@
               <span class="ftag">📊 Rapor Nilai</span>
             </div>
           </div>
-          <a class="fcard-lnk" href="/dashboard-murid.html">Buka Area Siswa &rarr;</a>
+          <a class="fcard-lnk" href="/dashboard-murid.html"
+            onclick="return requirePortalAccess('/dashboard-murid.html','Area Siswa','siswa')">Buka Area Siswa &rarr;</a>
         </div>
 
         <div class="fcard">
@@ -2050,7 +2098,8 @@
               <span class="ftag">✅ Verifikasi NIS</span>
             </div>
           </div>
-          <a class="fcard-lnk" href="/dashboard-guru.html">Buka Dashboard Guru &rarr;</a>
+          <a class="fcard-lnk" href="/dashboard-guru.html"
+            onclick="return requirePortalAccess('/dashboard-guru.html','Dashboard Guru','guru')">Buka Dashboard Guru &rarr;</a>
         </div>
 
         <div class="fcard">
@@ -2081,7 +2130,9 @@
         interaktif, dan pencatatan nilai otomatis.</p>
       <div class="cta-btns">
         <button class="btn-w" onclick="openLogin()">Masuk Sekarang</button>
-        <a class="btn-ow" href="/game-quiz.html" style="text-decoration:none">Coba Game Quiz</a>
+        <a class="btn-ow" href="/game-quiz.html"
+          onclick="return requirePortalAccess('/game-quiz.html','Arena Game Quiz','siswa')"
+          style="text-decoration:none">Coba Game Quiz</a>
       </div>
     </div>
   </section>
@@ -2110,10 +2161,10 @@
         <div class="foot-col">
           <h4>Akses Portal</h4>
           <ul>
-            <li><a onclick="openLogin()">Administrator</a></li>
-            <li><a href="/dashboard-guru.html">Dashboard Guru</a></li>
-            <li><a href="/dashboard-murid.html">Dashboard Siswa</a></li>
-            <li><a href="/game-quiz.html">Arena Game Quiz</a></li>
+            <li><a onclick="openLogin({role:'admin'})">Administrator</a></li>
+            <li><a href="/dashboard-guru.html" onclick="return requirePortalAccess('/dashboard-guru.html','Dashboard Guru','guru')">Dashboard Guru</a></li>
+            <li><a href="/dashboard-murid.html" onclick="return requirePortalAccess('/dashboard-murid.html','Dashboard Siswa','siswa')">Dashboard Siswa</a></li>
+            <li><a href="/game-quiz.html" onclick="return requirePortalAccess('/game-quiz.html','Arena Game Quiz','siswa')">Arena Game Quiz</a></li>
           </ul>
         </div>
         <div class="foot-col">
@@ -2183,13 +2234,70 @@
   <script src="/colab-client.js"></script>
   <script src="/migrate.js"></script>
   <script>
-    // Login modal
-    function openLogin() {
-      document.getElementById('loginOverlay').classList.add('show');
-      const active = document.querySelector('.rs.on');
-      if (active) pickRole(active);
+    // Auth & Login modal gate
+    let pendingPortalUrl = null;
+    function readRole() {
+      let r = localStorage.getItem('userRole') || '';
+      try { if (r.charAt(0) === '"') r = JSON.parse(r); } catch (e) {}
+      return String(r || '').trim();
     }
-    function closeLogin() { document.getElementById('loginOverlay').classList.remove('show') }
+    function getPortalAuth() {
+      const role = readRole();
+      const isStaff = (role === 'guru' || role === 'admin') && !!localStorage.getItem('pb.guru.passphrase');
+      const isStudent = (role === 'siswa' || role === 'murid') && !!(localStorage.getItem('pb.murid.nis') || localStorage.getItem('pb.murid.nama'));
+      return { role, isStaff, isStudent, loggedIn: isStaff || isStudent };
+    }
+    function refreshLockState() {
+      const { loggedIn } = getPortalAuth();
+      document.body.classList.toggle('is-authed', loggedIn);
+    }
+    function requirePortalAccess(targetUrl, label, preferredRole) {
+      const auth = getPortalAuth();
+      const teacherOnly = String(targetUrl || '').includes('dashboard-guru') || String(targetUrl || '').includes('kelola=1');
+      if (auth.loggedIn) {
+        if (teacherOnly && !auth.isStaff) {
+          openLogin({
+            role: preferredRole || 'guru',
+            next: targetUrl,
+            msg: '🔒 Halaman ' + (label || 'ini') + ' khusus akun Guru / Admin. Silakan masuk sebagai Guru atau Admin.'
+          });
+          return false;
+        }
+        window.location.href = targetUrl;
+        return false;
+      }
+      openLogin({
+        role: preferredRole || (teacherOnly ? 'guru' : 'siswa'),
+        next: targetUrl,
+        msg: '🔒 Silakan login terlebih dahulu untuk membuka ' + (label || 'fitur ini') + '.'
+      });
+      return false;
+    }
+
+    function openLogin(opts) {
+      opts = opts || {};
+      pendingPortalUrl = opts.next || null;
+      document.getElementById('loginOverlay').classList.add('show');
+      if (opts.role) {
+        const targetTab = document.querySelector('.rs[data-role="' + opts.role + '"]');
+        if (targetTab) pickRole(targetTab);
+      } else {
+        const active = document.querySelector('.rs.on');
+        if (active) pickRole(active);
+      }
+      if (opts.msg) loginMsg(opts.msg, 'info');
+    }
+    function closeLogin() {
+      pendingPortalUrl = null;
+      document.getElementById('loginOverlay').classList.remove('show');
+    }
+    function afterLoginUrl(role, fallbackUrl) {
+      if (pendingPortalUrl) {
+        const teacherOnly = pendingPortalUrl.includes('dashboard-guru') || pendingPortalUrl.includes('kelola=1');
+        if (!teacherOnly || role === 'guru' || role === 'admin') return pendingPortalUrl;
+      }
+      return fallbackUrl;
+    }
     function closeLoginOutside(e) { if (e.target === document.getElementById('loginOverlay')) closeLogin() }
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLogin() })
     function pickRole(el) {
@@ -2524,7 +2632,7 @@
             localStorage.setItem('userRole', 'guru');
             localStorage.setItem('pb.guru.passphrase', pw);
             sessionStorage.removeItem('pb.admin.ok');
-            location.href = '/dashboard-guru.html';
+            location.href = afterLoginUrl('guru', '/dashboard-guru.html');
           } catch (err) { loginMsg(err.message || 'Gagal verifikasi di server Colab.', 'err'); }
           return;
         }
@@ -2537,7 +2645,7 @@
             localStorage.setItem('userRole', 'admin');
             sessionStorage.setItem('pb.admin.ok', '1');
             localStorage.setItem('pb.guru.passphrase', pw);
-            location.href = '/dashboard-guru.html';
+            location.href = afterLoginUrl('admin', '/dashboard-guru.html');
           } catch (err) { loginMsg(err.message || 'Gagal verifikasi di server Colab.', 'err'); }
           return;
         }
@@ -2553,7 +2661,7 @@
           localStorage.setItem('pb.murid.nis', a.nis || nis);
           localStorage.setItem('pb.murid.nama', a.nama || 'Siswa');
           localStorage.setItem('pb.murid.myClass', JSON.stringify(String(a.kelas || 'X-1').toUpperCase()));
-          location.href = '/dashboard-murid.html';
+          location.href = afterLoginUrl('siswa', '/dashboard-murid.html');
         } catch (err) { loginMsg(err.message || 'Gagal masuk lewat Google Colab.', 'err'); }
         return;
       }
@@ -2569,7 +2677,7 @@
             localStorage.setItem('userRole', 'guru');
             localStorage.setItem('pb.guru.passphrase', pw);
             sessionStorage.removeItem('pb.admin.ok');
-            location.href = '/dashboard-guru.html';
+            location.href = afterLoginUrl('guru', '/dashboard-guru.html');
             return;
           }
           const j = await r.json().catch(() => ({}));
@@ -2577,7 +2685,7 @@
           localStorage.setItem('userRole', 'guru');
           localStorage.setItem('pb.guru.passphrase', pw);
           sessionStorage.removeItem('pb.admin.ok');
-          location.href = '/dashboard-guru.html';
+          location.href = afterLoginUrl('guru', '/dashboard-guru.html');
         } catch (err) { loginMsg('Gagal menghubungi server. Coba lagi.', 'err'); }
         return;
       }
@@ -2596,7 +2704,7 @@
             localStorage.setItem('userRole', 'admin');
             sessionStorage.setItem('pb.admin.ok', '1');
             localStorage.setItem('pb.guru.passphrase', pw);
-            location.href = '/dashboard-guru.html';
+            location.href = afterLoginUrl('admin', '/dashboard-guru.html');
             return;
           }
           const j = await r.json().catch(() => ({}));
@@ -2605,7 +2713,7 @@
           sessionStorage.setItem('pb.admin.ok', '1');
           // Password admin juga membuka penyimpanan tugas/materi ke akun siswa.
           localStorage.setItem('pb.guru.passphrase', pw);
-          location.href = '/dashboard-guru.html';
+          location.href = afterLoginUrl('admin', '/dashboard-guru.html');
         } catch (err) {
           loginMsg('Gagal menghubungi server: ' + err.message, 'err');
         }
@@ -2628,7 +2736,7 @@
           localStorage.setItem('pb.murid.nis', nis);
           localStorage.setItem('pb.murid.nama', 'Siswa ' + nis);
           if (!localStorage.getItem('pb.murid.myClass')) localStorage.setItem('pb.murid.myClass', JSON.stringify('X-1'));
-          location.href = '/dashboard-murid.html';
+          location.href = afterLoginUrl('siswa', '/dashboard-murid.html');
           return;
         }
         const j = await r.json().catch(() => ({}));
@@ -2640,7 +2748,7 @@
         localStorage.setItem('pb.murid.nis', a.nis || nis);
         localStorage.setItem('pb.murid.nama', a.nama || '');
         localStorage.setItem('pb.murid.myClass', JSON.stringify(String(a.kelas || '').toUpperCase()));
-        location.href = '/dashboard-murid.html';
+        location.href = afterLoginUrl('siswa', '/dashboard-murid.html');
       } catch (err) {
         loginMsg('Gagal menghubungi server: ' + err.message, 'err');
       }
@@ -2736,6 +2844,21 @@
       }
     }
     hydrateLandingStats();
+    refreshLockState();
+    (function checkLoginQuery() {
+      try {
+        const sp = new URLSearchParams(location.search);
+        if (sp.get('login') === '1' && !getPortalAuth().loggedIn) {
+          const next = sp.get('next') || '';
+          const role = (next.includes('dashboard-guru') || next.includes('kelola=1')) ? 'guru' : 'siswa';
+          openLogin({
+            role,
+            next,
+            msg: '🔒 Silakan masuk terlebih dahulu untuk mengakses halaman tersebut.'
+          });
+        }
+      } catch (e) {}
+    })();
 
     // Scroll nav highlight
     const secs = document.querySelectorAll('section[id]')
