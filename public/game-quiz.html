@@ -197,6 +197,7 @@ async function load(){
   }
   app.innerHTML='<h2 class="f">Memuat quiz…</h2>';
   try{
+    if(window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
     if(window.colabDb && window.colabDb.isReady()){
       const c=await window.colabDb.catalog.pull();
       QUIZZES=(c.quiz||[]).filter(q=>Array.isArray(q.soal)&&q.soal.length&&matchesKelas(q.k,kelas));

@@ -1027,10 +1027,31 @@ render();
       apply(saved);
       if(tBtn) tBtn.addEventListener('click', function(){ apply(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark'); });
       var chip=document.getElementById('mColabChip');
-      if(chip && window.colabDb && window.colabDb.isReady()){
-        chip.textContent='🟢 Colab Aktif';
-        chip.style.background='var(--okl)';
-        chip.style.color='var(--ok)';
+      function paintChip(){
+        if(!chip) return;
+        var ready = window.colabDb && window.colabDb.isReady();
+        chip.textContent = ready ? '🟢 Colab Aktif' : '🟡 Mode Lokal';
+        chip.style.background = ready ? 'var(--okl)' : '';
+        chip.style.color = ready ? 'var(--ok)' : '';
+      }
+      paintChip();
+      if(window.colabDb && window.colabDb.whenReady){
+        window.colabDb.whenReady().then(function(){
+          paintChip();
+          if(window.colabDb.isReady() && window.colabDb.leaderboard){
+            window.colabDb.leaderboard.get(kelas||null).then(function(res){
+              var rankEl=document.getElementById('rankList');
+              if(res && Array.isArray(res.leaderboard) && res.leaderboard.length && rankEl){
+                var myIdx=res.leaderboard.findIndex(function(x){return x.nis===nis||x.nama===nama;});
+                var qr=document.querySelector('#qcRank .qval'); if(qr&&myIdx>=0) qr.textContent='#'+(myIdx+1);
+                rankEl.innerHTML=res.leaderboard.slice(0,5).map(function(r,idx){
+                  var me=(r.nis===nis||r.nama===nama);
+                  return '<div class="rank '+(me?'me':'')+'"><div class="rank-pos p'+(idx<3?idx+1:'n')+'">'+(idx+1)+'</div><div class="rank-ava">'+(r.nama||'S').charAt(0).toUpperCase()+'</div><div><div class="rank-name">'+(r.nama||'Siswa').replace(/</g,'&lt;')+(me?' (Kamu)':'')+'</div><div class="rank-meta">'+r.kelas+' · '+r.xp+' XP · '+r.doneCount+' tuntas</div></div><div class="rank-score">'+r.points+'</div></div>';
+                }).join('');
+              }
+            }).catch(function(){});
+          }
+        });
       }
     })();
 

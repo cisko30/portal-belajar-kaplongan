@@ -744,6 +744,7 @@
       const isPost = !!(init && init.method === 'POST');
       const postBody = isPost ? JSON.parse(init.body || '{}') : null;
       try {
+        if(window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
         const pass = this.pass(retry);
         if(!pass && ROLE==='guru') return isPost ? mutateLocalAccounts(postBody) : readCachedAccounts();
         if(window.colabDb && window.colabDb.isReady()){
@@ -1105,11 +1106,15 @@
       if(pulling) return pulling;
       pulling=(async()=>{
         try{
+          if(window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
           if(window.colabDb && window.colabDb.isReady()){
             const data=await window.colabDb.catalog.pull();
             revision=data.updatedAt||null;
             const hasRemote=!!data.updatedAt || KINDS.some(k=>Array.isArray(data[k])&&data[k].length>0);
-            if(hasRemote) KINDS.forEach(k=>{ if(Array.isArray(data[k])) LS.set('pb.guru.'+k, data[k]); });
+            if(hasRemote){
+              localStorage.setItem('pb.guru.remote_catalog_synced','1');
+              KINDS.forEach(k=>{ if(Array.isArray(data[k])) LS.set('pb.guru.'+k, data[k]); });
+            }
             return true;
           }
 
@@ -1120,7 +1125,10 @@
           const data=await r.json();
           revision=data.updatedAt||null;
           const hasRemote=!!data.updatedAt || KINDS.some(k=>Array.isArray(data[k])&&data[k].length>0);
-          if(hasRemote) KINDS.forEach(k=>{ if(Array.isArray(data[k])) LS.set('pb.guru.'+k, data[k]); });
+          if(hasRemote){
+            localStorage.setItem('pb.guru.remote_catalog_synced','1');
+            KINDS.forEach(k=>{ if(Array.isArray(data[k])) LS.set('pb.guru.'+k, data[k]); });
+          }
           return true;
         }catch(_){ return false; }
         finally{ pulling=null; }
@@ -1197,6 +1205,7 @@
       if(pulling) return pulling;
       pulling=(async()=>{
         try{
+          if(window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
           if(window.colabDb && window.colabDb.isReady()){
             cache(await window.colabDb.activity.pull());
             return true;
@@ -1306,20 +1315,35 @@
   })();
 
   // ── Google Colab Live Polling Sync Listener ──
-  (function initRealtimeSync(){
-    if(!window.colabDb || !window.colabDb.isReady()) return;
+  (async function initRealtimeSync(){
+    if(!window.colabDb) return;
+    if(window.colabDb.whenReady) await window.colabDb.whenReady();
+    if(!window.colabDb.isReady()) return;
     const refreshPanel = () => {
       if(_currentFeat && FEATURES[_currentFeat]) {
         const b = document.getElementById('fpB');
         if(b && overlay.classList.contains('open')) FEATURES[_currentFeat].render(b);
       }
     };
-    const syncOnce = () => {
+    const syncOnce = async () => {
       if(document.hidden || !window.colabDb.isReady()) return;
-      SharedCatalog.pull().then(()=>Activity.pull()).then(()=>{ emitSync(); refreshPanel(); }).catch(()=>{});
+      try{
+        await SharedCatalog.pull();
+        await Activity.pull();
+        if(ROLE==='guru' && localStorage.getItem('pb.guru.passphrase')){
+          const res = await window.colabDb.accounts.list(localStorage.getItem('pb.guru.passphrase')||'').catch(()=>null);
+          if(res && Array.isArray(res.accounts)){
+            localStorage.setItem('pb.accounts.seeded_v2','1');
+            LS.set('pb.cached.accounts', dedupeAccounts(res.accounts));
+          }
+        }
+        emitSync();
+        refreshPanel();
+      }catch(_){}
     };
-    setInterval(syncOnce, 20000);
+    setInterval(syncOnce, 15000);
     window.addEventListener('focus', syncOnce);
+    document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) syncOnce(); });
   })();
 
   // ── QuizAlerts: indikator "pengerjaan baru" untuk guru ──
@@ -1835,8 +1859,9 @@
   const QUIZ_SEEDS = ['VIII-A','VIII-B','VIII-C','VIII-D'].map(k=>({
     j:'Quiz BAB 1 — Berpikir Komputasional ('+k+')', k, soal: SOAL_BK_BAB1.map(s=>({...s, o:[...s.o]}))
   }));
-  /** Pastikan quiz bawaan tersedia (tanpa menimpa quiz buatan guru). */
+  /** Pastikan quiz bawaan tersedia (tanpa menimpa quiz buatan guru atau hasil sync remote). */
   function seedQuizzes(list){
+    if(localStorage.getItem('pb.guru.remote_catalog_synced')==='1') return false;
     let changed=false;
     QUIZ_SEEDS.forEach(seed=>{
       if(!list.some(x=>String(x&&x.j||'')===seed.j)){ list.push(seed); changed=true; }
@@ -2483,7 +2508,7 @@
       }
 
       if(ROLE === 'guru'){
-        const accounts = (LS.get('pb.cached.accounts', []) || []).concat(DEFAULT_ACCOUNTS.filter(d => !(LS.get('pb.cached.accounts', [])||[]).some(a=>a.nis===d.nis)));
+        const accounts = readCachedAccounts();
         const selCls = this._cls || 'ALL';
         const visible = selCls==='ALL' ? accounts : accounts.filter(a=>canonicalClass(a.kelas)===selCls);
         const avgSkills = skillList.map(sk => {
@@ -3197,12 +3222,21 @@
       const mc0 = getMyClass();
       if(!mc0 || !ALL_CLASSES.includes(mc0)){ setMyClass(null); showClassGate(); }
       else guardDeepLink(mc0);
-      Promise.all([SharedCatalog.pull(), Activity.pull()]).then(()=>FeatureConfig.applySidebarConfig());
+      Promise.all([SharedCatalog.pull(), Activity.pull()]).then(()=>{ emitSync(); FeatureConfig.applySidebarConfig(); });
     } else {
-      // Migrasikan publikasi lama dan kirim katalog ke penyimpanan bersama saat
-      // guru membuka dashboard, tanpa harus mengedit ulang setiap materi/tugas.
-      SharedCatalog.pull();
-      Activity.pull().then(()=>FeatureConfig.applySidebarConfig());
+      // Pastikan guru selalu menarik katalog, aktivitas & daftar akun terbaru dari Colab/server agar isi sama dengan admin
+      Promise.all([SharedCatalog.pull(), Activity.pull()]).then(async ()=>{
+        if(window.colabDb && window.colabDb.isReady() && localStorage.getItem('pb.guru.passphrase')){
+          try{
+            const ac = await window.colabDb.accounts.list(localStorage.getItem('pb.guru.passphrase')||'');
+            if(ac && Array.isArray(ac.accounts)){
+              localStorage.setItem('pb.accounts.seeded_v2','1');
+              LS.set('pb.cached.accounts', dedupeAccounts(ac.accounts));
+            }
+          }catch(_){}
+        }
+        emitSync(); FeatureConfig.applySidebarConfig();
+      });
       SubAlerts.start();
     }
     FeatureConfig.applySidebarConfig();

@@ -1,5 +1,5 @@
 /* Service Worker — Portal Belajar SMA NU Kaplongan */
-const CACHE_NAME = 'pb-kaplongan-v2';
+const CACHE_NAME = 'pb-kaplongan-v3';
 const SHELL_ASSETS = [
   '/',
   '/portal-belajar.html',
@@ -45,7 +45,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   event.respondWith(
-    fetch(req)
+    fetch(req, { cache: 'no-store' })
       .then((res) => {
         if (res && res.status === 200) {
           const clone = res.clone();

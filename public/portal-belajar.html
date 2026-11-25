@@ -2511,6 +2511,7 @@
       });
     }
     async function syncCloudTopics() {
+      if (window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
       if (window.colabDb && window.colabDb.isReady()) {
         try {
           const remote = await window.colabDb.topics.list();
@@ -2820,6 +2821,7 @@
         if (hcSiswaLbl) hcSiswaLbl.textContent = 'Akun Siswa';
       }
 
+      if (window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
       if (window.colabDb && window.colabDb.isReady()) {
         try {
           const h = await window.colabDb.testConnection();
