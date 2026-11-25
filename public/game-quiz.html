@@ -80,6 +80,16 @@ input.in{padding:12px;border-radius:12px;border:0;font:600 15px Nunito;width:100
 .adv-modal{position:fixed;inset:0;background:rgba(15,23,42,.82);backdrop-filter:blur(6px);z-index:20;display:flex;align-items:center;justify-content:center;padding:18px}
 .adv-mbox{background:var(--card);border:3px solid var(--y);border-radius:22px;max-width:640px;width:100%;padding:22px;box-shadow:0 24px 60px #0008;animation:popIn .2s ease-out}
 @keyframes popIn{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
+.td-lane{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;padding:14px;border-radius:18px;background:linear-gradient(90deg,#1e293b,#312e81);border:2px solid #ffffff26;margin:10px 0}
+.td-cell{height:68px;border-radius:14px;background:#ffffff12;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:28px;border:2px solid transparent}
+.td-cell.fort{background:#4f46e544;border-color:#818cf8}.td-cell.foe{background:#f43f5e33;border-color:#fb7185;animation:pulseChest 1.2s infinite}
+.wh-wrap{position:relative;width:240px;height:240px;margin:14px auto}
+.wh-disc{width:100%;height:100%;border-radius:50%;border:6px solid #fff;box-shadow:0 12px 32px #0006;transition:transform 2.6s cubic-bezier(.12,.8,.18,1);background:conic-gradient(#f43f5e 0deg 45deg,#3b82f6 45deg 90deg,#10b981 90deg 135deg,#f59e0b 135deg 180deg,#8b5cf6 180deg 225deg,#06b6d4 225deg 270deg,#ec4899 270deg 315deg,#84cc16 315deg 360deg);display:flex;align-items:center;justify-content:center}
+.wh-hub{width:54px;height:54px;border-radius:50%;background:#1e1147;border:4px solid #fff;display:flex;align-items:center;justify-content:center;font-size:24px;box-shadow:0 4px 12px #0005}
+.wh-ptr{position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-size:28px;z-index:2;filter:drop-shadow(0 3px 4px #0008)}
+.boss-stage{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:14px}
+.hpbar{height:14px;border-radius:99px;background:#ffffff22;overflow:hidden;margin-top:6px}.hpbar>div{height:100%;transition:width .35s}
+.boss-hit{animation:shake .35s}
 </style></head><body><div class="wrap" id="app"></div>
 <script src="/colab-client.js"></script>
 <script>
@@ -199,7 +209,7 @@ const xp=()=>+(rd('pb.game.xp')||0), addXp=n=>localStorage.setItem('pb.game.xp',
 const ans=()=>+(rd('pb.game.answered')||0), cor=()=>+(rd('pb.game.correct')||0);
 const bumpAns=ok=>{localStorage.setItem('pb.game.answered',ans()+1);if(ok)localStorage.setItem('pb.game.correct',cor()+1)};
 async function syncProgress(mode,points){
-  const diff={};['gold','balon','tikus','roket','cocok','candy','fish','cyber','petualangan'].forEach(k=>diff[k]=DL(k));
+  const diff={};['gold','balon','tikus','roket','cocok','candy','fish','cyber','petualangan','menara','roda','bos'].forEach(k=>diff[k]=DL(k));
   const entry={userId:localStorage.getItem('pb.murid.nis')||nama+'|'+kelas,nama,kelas,xp:xp(),level:level(),diff,answered:ans(),correct:cor(),mode,points,quiz:quiz?.j||'',at:new Date().toISOString()};
   localStorage.setItem('pb.game.pending',JSON.stringify(entry));
   try{
@@ -222,7 +232,7 @@ function home(){
   <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap">${AVAS.map(a=>`<span class="ava ${a===ava()?'on':''}" onclick="localStorage.setItem('pb.game.ava',JSON.stringify('${a}'));beep(880);home()">${a}</span>`).join('')}</div></div>
   <div class="card" style="margin:18px 0"><h3 class="f" style="margin-top:0">1. Pilih paket soal</h3>
   ${QUIZZES.length?`<select id="qs">${QUIZZES.map((q,i)=>`<option value="${i}">${esc(q.j)} (${q.soal.length} soal)</option>`).join('')}</select>`:'<p>Belum ada quiz dari guru untuk kelasmu. Minta Pak/Bu guru mengirim quiz dulu ya 🙂</p>'}</div>
-  <h3 class="f">2. Pilih mode permainan (${9} Arena Seru!)</h3>
+  <h3 class="f">2. Pilih mode permainan (12 Arena Seru!)</h3>
   <div class="grid">
    <div class="card mode" data-m="gold"><span class="mode-tag">Harta Karun</span><div class="ic">💰</div><h3 class="f">Gold Rush</h3><p>Jawab benar → buka peti harta! Rebut emas, combo beruntun, atau jackpot.</p></div>
    <div class="card mode" data-m="balon"><span class="mode-tag">Refleks Cepat</span><div class="ic">🎈</div><h3 class="f">Balon Pecah</h3><p>Pecahkan balon jawaban yang benar di langit cerah sebelum terbang. 60 detik!</p></div>
@@ -232,7 +242,10 @@ function home(){
    <div class="card mode" data-m="candy"><span class="mode-tag">Strategi &amp; Curi</span><div class="ic">🍬</div><h3 class="f">Candy Quest</h3><p>Kumpulkan permen manis, curi stok robot, atau tukar tas permen misterius!</p></div>
    <div class="card mode" data-m="fish"><span class="mode-tag">Tangkap Ikan</span><div class="ic">🦈</div><h3 class="f">Fishing Frenzy</h3><p>Lempar kail ke laut biru! Tangkap ikan raksasa &amp; hindari gurita pencuri.</p></div>
    <div class="card mode" data-m="cyber"><span class="mode-tag">Misi Hacker Baik</span><div class="ic">💻</div><h3 class="f">Cyber Hack</h3><p>Bobol firewall aman &amp; kumpulkan crypto. Awas virus jika salah menebak!</p></div>
-   <div class="card mode" data-m="petualangan" style="border-color:#ffcb0566;background:linear-gradient(145deg,#134e4a,#2d1b69)"><span class="mode-tag">⭐ Baru · Adventure</span><div class="ic">🗺️</div><h3 class="f">Petualangan Bonus</h3><p>Jelajahi peta! Setiap mengambil peti bonus atau energi, jawab pertanyaan rahasia dulu.</p></div>
+   <div class="card mode" data-m="petualangan" style="border-color:#ffcb0566;background:linear-gradient(145deg,#134e4a,#2d1b69)"><span class="mode-tag">Adventure</span><div class="ic">🗺️</div><h3 class="f">Petualangan Bonus</h3><p>Jelajahi peta! Setiap mengambil peti bonus atau energi, jawab pertanyaan rahasia dulu.</p></div>
+   <div class="card mode" data-m="menara" style="border-color:#38bdf866;background:linear-gradient(145deg,#1e3a8a,#312e81)"><span class="mode-tag">⭐ Baru · Tower Defense</span><div class="ic">🏰</div><h3 class="f">Pertahanan Menara</h3><p>Tembak pasukan bug sebelum menabrak benteng sekolah! Isi Super Nova tiap 3 combo.</p></div>
+   <div class="card mode" data-m="roda" style="border-color:#f472b666;background:linear-gradient(145deg,#831843,#4c1d95)"><span class="mode-tag">⭐ Baru · Game Show</span><div class="ic">🎡</div><h3 class="f">Roda Keberuntungan</h3><p>Putar roda hadiah raksasa! Jawab pertanyaan benar untuk memenangkan hadiah putaran.</p></div>
+   <div class="card mode" data-m="bos" style="border-color:#fb923c66;background:linear-gradient(145deg,#7c2d12,#4c1d95)"><span class="mode-tag">⭐ Baru · RPG Duel</span><div class="ic">🐉</div><h3 class="f">Duel Bos Raksasa</h3><p>Hadapi Naga Algoritma! Tiap jawaban benar meluncurkan serangan kritik ke HP Bos.</p></div>
   </div>
   <div class="card" style="margin-top:18px"><h3 class="f" style="margin-top:0">🏆 Papan Rekor Terbaik Kamu</h3><ul class="lb" style="list-style:none;padding:0;margin:0">${(rd('pb.game.scores')||[]).slice(0,6).map((s,idx)=>`<li><span>${['🥇','🥈','🥉'][idx]||'⭐'} <b>${esc(s.mode)}</b> · ${esc(s.quiz)}</span><b>${s.skor} poin</b></li>`).join('')||'<li>Belum ada rekor. Ayo mulai petualangan atau pilih arena favoritmu!</li>'}</ul></div>`;
   app.querySelectorAll('.mode').forEach(m=>m.onclick=()=>{if(!QUIZZES.length)return alert('Belum ada quiz.');quiz=QUIZZES[+$('#qs').value];GAMES[m.dataset.m]()});
@@ -560,7 +573,106 @@ function petualangan(){
   renderMap('✨ Temukan 💎 Peti Bonus dan capai 🏁 Finish!');
 }
 
-const GAMES={gold,balon,cocok,tikus,roket,candy,fish,cyber,petualangan};
+/* ── Pertahanan Menara (Tower Defense Quiz) ── */
+function menara(){
+  const lv=DL('menara'), soal=evolve(quiz.soal,lv), totalWaves=Math.min(10,soal.length);
+  let i=0, skor=0, hp=3, enemyPos=4, streak=0, nova=0, benar=0;
+  const enemyIco=()=>['👾','🤖','🛸','🐛'][i%4];
+  function ask(){
+    if(hp<=0) return finish('Pertahanan Menara',skor,`Benteng bobol di gelombang ${i+1} · Lv ${lv}`,'menara',benar/Math.max(1,i));
+    if(i>=totalWaves) return finish('Pertahanan Menara',skor+40,`🏰 Benteng aman! ${benar}/${totalWaves} gelombang ditahan (+40 bonus)`,'menara',benar/totalWaves);
+    const s=soal[i], ord=shuffle(s.o.map((t,k)=>({t,k})));
+    const lane=Array.from({length:6},(_,idx)=>idx===0?'<div class="td-cell fort">🏰<span style="font-size:10px">Benteng</span></div>':idx===enemyPos?`<div class="td-cell foe">${enemyIco()}<span style="font-size:10px">Musuh</span></div>`:'<div class="td-cell">·</div>').join('');
+    app.innerHTML=`<div class="hud ${streak>=3?'fever':''}"><span class="chip">⭐ ${skor}</span><span class="chip">${'❤️'.repeat(hp)}</span><span class="chip">Gelombang ${i+1}/${totalWaves}</span><span class="chip">☄️ Nova ${nova}/3</span><button class="btn ghost" style="margin-left:auto;padding:8px 12px" onclick="home()">Keluar</button></div>
+    <div class="td-lane">${lane}</div>
+    ${nova>=3?'<div style="text-align:center;margin-bottom:10px"><button class="btn" id="tdNova">☄️ TEMBAKKAN SUPER NOVA (+35 Poin!)</button></div>':''}
+    <div class="q">${esc(s.q)}</div>
+    <div class="opts">${ord.map((o,idx)=>`<button class="opt" data-k="${o.k}"><span style="opacity:.65;margin-right:8px">${'ABCD'[idx]}.</span>${esc(o.t)}</button>`).join('')}</div>`;
+    if($('#tdNova')) $('#tdNova').onclick=()=>{nova=0;skor+=35;enemyPos=5;good();confetti(50);pop('☄️ SUPER NOVA! +35');ask();};
+    app.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{
+      app.querySelectorAll('.opt').forEach(x=>{x.disabled=true;x.classList.add(+x.dataset.k===s.a?'ok':'no');});
+      if(+b.dataset.k===s.a){good();bumpAns(1);benar++;streak++;nova=Math.min(3,nova+1);const gain=15+lv+streak*2;skor+=gain;enemyPos=Math.min(5,enemyPos+1);pop('⚡ ZAPPED! +'+gain);}
+      else{bad();bumpAns(0);streak=0;enemyPos--;if(enemyPos<=0){hp--;enemyPos=4;pop('💥 Benteng kena serang! -1 ❤️','#ff5ca8');}else{pop('⚠️ Musuh mendekat!','#ff5ca8');}}
+      i++; setTimeout(ask,800);
+    });
+  }
+  ask();
+}
+
+/* ── Roda Keberuntungan (Spin Wheel + Quiz) ── */
+function roda(){
+  const lv=DL('roda'), soal=evolve(quiz.soal,lv), ROUNDS=Math.min(8,soal.length);
+  const wedges=[
+    {lbl:'+20 Poin',fn:x=>x+20},{lbl:'+50 Poin! 💎',fn:x=>x+50,big:1},{lbl:'Poin x2! 🔥',fn:x=>Math.max(30,x*2),big:1},{lbl:'+30 Poin',fn:x=>x+30},
+    {lbl:'+15 Poin',fn:x=>x+15},{lbl:'Jackpot +80! 👑',fn:x=>x+80,big:1},{lbl:'+25 Poin',fn:x=>x+25},{lbl:'+40 Poin 🌟',fn:x=>x+40}
+  ];
+  let i=0, skor=0, benar=0, rot=0;
+  function spinView(){
+    if(i>=ROUNDS) return finish('Roda Keberuntungan',skor,`${benar}/${ROUNDS} putaran dimenangkan · Lv ${lv}`,'roda',benar/ROUNDS);
+    app.innerHTML=`<div class="hud"><span class="chip">⭐ ${skor}</span><span class="chip">Putaran ${i+1}/${ROUNDS}</span><span class="chip">Lv ${lv}</span><button class="btn ghost" style="margin-left:auto;padding:8px 12px" onclick="home()">Keluar</button></div>
+    <div class="card" style="text-align:center">
+      <h2 class="f" style="margin:0 0 6px">🎡 Putar Roda Hadiah!</h2>
+      <p style="opacity:.85;margin:0 0 12px">Putar roda dulu, lalu jawab 1 pertanyaan benar untuk mengklaim hadiahnya!</p>
+      <div class="wh-wrap"><div class="wh-ptr">🔻</div><div class="wh-disc" id="whDisc" style="transform:rotate(${rot}deg)"><div class="wh-hub">🎯</div></div></div>
+      <div id="whStat" style="min-height:26px;font-weight:800;color:var(--y);margin-bottom:10px"></div>
+      <button class="btn" id="whSpin">🎡 PUTAR RODA SEKARANG</button>
+    </div>`;
+    $('#whSpin').onclick=()=>{
+      const btn=$('#whSpin'); btn.disabled=true; beep(520,.08);
+      const pick=Math.random()*8|0;
+      rot += 1080 + (pick*45) + 22;
+      $('#whDisc').style.transform=`rotate(${rot}deg)`;
+      const prize=wedges[pick];
+      setTimeout(()=>{
+        $('#whStat').textContent='🎁 Target Hadiah: ' + prize.lbl + ' — Jawab soal untuk klaim!';
+        good();
+        setTimeout(()=>askPrize(prize), 700);
+      }, 2650);
+    };
+  }
+  function askPrize(prize){
+    const s=soal[i], ord=shuffle(s.o.map((t,k)=>({t,k})));
+    app.innerHTML=`<div class="hud"><span class="chip">⭐ ${skor}</span><span class="chip">🎁 ${esc(prize.lbl)}</span><button class="btn ghost" style="margin-left:auto;padding:8px 12px" onclick="home()">Keluar</button></div>
+    <div class="q">${esc(s.q)}</div>
+    <div class="opts">${ord.map((o,idx)=>`<button class="opt" data-k="${o.k}"><span style="opacity:.65;margin-right:8px">${'ABCD'[idx]}.</span>${esc(o.t)}</button>`).join('')}</div>`;
+    app.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{
+      app.querySelectorAll('.opt').forEach(x=>{x.disabled=true;x.classList.add(+x.dataset.k===s.a?'ok':'no');});
+      if(+b.dataset.k===s.a){good();bumpAns(1);benar++;skor=Math.max(0,Math.round(prize.fn(skor)));pop('🎉 '+prize.lbl);if(prize.big)confetti(70);}
+      else{bad();bumpAns(0);const lost=Math.min(skor,4+lv*2);skor-=lost;pop('Hadiah hangus! -'+lost,'#ff5ca8');}
+      i++; setTimeout(spinView,950);
+    });
+  }
+  spinView();
+}
+
+/* ── Duel Bos Raksasa (Turn-Based RPG Battle) ── */
+function bos(){
+  const lv=DL('bos'), soal=evolve(quiz.soal,lv), maxBoss=100+(lv-1)*20;
+  let i=0, skor=0, heroHp=3, bossHp=maxBoss, streak=0, benar=0, terjawab=0, hitCls='';
+  function ask(){
+    if(heroHp<=0) return finish('Duel Bos Raksasa',skor,`Kalah tipis melawan Naga (sisa HP Bos ${bossHp})`,'bos',benar/Math.max(1,terjawab));
+    if(bossHp<=0){skor+=100;return finish('Duel Bos Raksasa',skor,`⚔️ Naga Algoritma dikalahkan! +100 Bonus Kemenangan`,'bos',benar/Math.max(1,terjawab));}
+    const s=soal[i%soal.length], ord=shuffle(s.o.map((t,k)=>({t,k})));
+    app.innerHTML=`<div class="hud ${streak>=3?'fever':''}"><span class="chip">⭐ ${skor}</span><span class="chip">🔥 Combo ${streak}</span><span class="chip">Lv ${lv}</span><button class="btn ghost" style="margin-left:auto;padding:8px 12px" onclick="home()">Keluar</button></div>
+    <div class="boss-stage">
+      <div class="card" style="padding:14px"><div style="display:flex;justify-content:space-between"><b>${ava()} ${esc(nama)}</b><span>${'💚'.repeat(heroHp)}</span></div><div class="hpbar"><div style="width:${heroHp/3*100}%;background:#22c55e"></div></div></div>
+      <div class="card ${hitCls}" style="padding:14px;border-color:#f43f5e88"><div style="display:flex;justify-content:space-between"><b>🐉 Naga Algoritma</b><span>${bossHp}/${maxBoss} HP</span></div><div class="hpbar"><div style="width:${bossHp/maxBoss*100}%;background:#f43f5e"></div></div></div>
+    </div>
+    <div class="q">${esc(s.q)}</div>
+    <div class="opts">${ord.map((o,idx)=>`<button class="opt" data-k="${o.k}"><span style="opacity:.65;margin-right:8px">${'ABCD'[idx]}.</span>${esc(o.t)}</button>`).join('')}</div>`;
+    hitCls='';
+    app.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{
+      app.querySelectorAll('.opt').forEach(x=>{x.disabled=true;x.classList.add(+x.dataset.k===s.a?'ok':'no');});
+      terjawab++;
+      if(+b.dataset.k===s.a){good();bumpAns(1);benar++;streak++;const dmg=20+streak*5;bossHp=Math.max(0,bossHp-dmg);skor+=dmg;hitCls='boss-hit';pop(streak>=3?'💥 CRITICAL -'+dmg+' HP!':'⚔️ Serangan -'+dmg+' HP!');if(streak>=3)confetti(40);}
+      else{bad();bumpAns(0);streak=0;heroHp--;pop('🔥 Naga menyembur api! -1 💚','#ff5ca8');}
+      i++; setTimeout(ask,800);
+    });
+  }
+  ask();
+}
+
+const GAMES={gold,balon,cocok,tikus,roket,candy,fish,cyber,petualangan,menara,roda,bos};
 /* ── Kelola Game (Admin & Guru) ── */
 async function manage(){
   if(!['guru','admin'].includes(localStorage.getItem('userRole'))){location.replace('/dashboard-murid.html');return;}
