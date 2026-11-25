@@ -1000,7 +1000,7 @@ render();
       if(window.muridNilaiChart && grades.length){
         window.muridNilaiChart.data.labels=grades.slice(-5).map(function(g){return g.label;});
         window.muridNilaiChart.data.datasets[0].data=grades.slice(-5).map(function(g){return g.val;});
-        window.muridNilaiChart.update();
+        window.muridNilaiChart.update('none');
       }
     }
 

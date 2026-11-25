@@ -1220,7 +1220,7 @@ setTimeout(()=>{if(window.lucide)lucide.createIcons()},100);
       Object.keys(act.quiz||{}).forEach(function(id){(act.quiz[id]||[]).forEach(function(s){if(s&&s.nilai!=null&&!isNaN(+s.nilai)&&canon(s.kelas)===k)vals.push(+s.nilai);});});
       return vals.length?Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length):84;
     });
-    window.prepostChart.update();
+    window.prepostChart.update('none');
   }
   function renderLogins(){
     var el=document.getElementById('loginList'); if(!el)return;

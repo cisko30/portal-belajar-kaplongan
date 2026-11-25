@@ -805,19 +805,11 @@
   FEATURES.akun = {
     ico:'A', title:'Akun Siswa', sub:'Buat akun pribadi tiap siswa (NIS + password)',
     render(b){
-      let list=[]; let filter=''; let loadErr='';
-      b.innerHTML = `<div id="akWrap"><div class="fp-empty">Memuat akun…</div></div>`;
-      const wrap = b.querySelector('#akWrap');
-
-      const draw = ()=>{
-        const rows = list
-          .filter(a=>!filter || canonicalClass(a.kelas)===filter)
-          .sort((x,y)=> (x.kelas+x.nama).localeCompare(y.kelas+y.nama));
-        wrap.innerHTML = `
-          ${loadErr? `<div class="fp-card" style="border-color:#fca5a5;background:#fef2f2;margin-bottom:12px">
-            <b>Daftar akun gagal dimuat:</b> ${esc(loadErr)}
-            <div class="fp-row" style="margin-top:8px"><button class="fp-btn ghost sm" id="akRetry">Coba lagi</button></div>
-          </div>`:''}
+      let list = readCachedAccounts();
+      let filter=''; let loadErr='';
+      b.innerHTML = `
+        <div id="akWrap">
+          <div id="akErrBox"></div>
           <div class="fp-grid c2" style="margin-bottom:14px">
             <div class="fp-card">
               <h4>➕ Tambah / perbarui akun</h4>
@@ -842,6 +834,27 @@
               </div>
             </div>
           </div>
+          <div id="akTableBox">${list.length?'':'<div class="fp-empty">Memuat akun…</div>'}</div>
+        </div>`;
+      const wrap = b.querySelector('#akWrap');
+      const errBox = b.querySelector('#akErrBox');
+      const tableBox = b.querySelector('#akTableBox');
+      const gen = ()=> Math.random().toString(36).slice(2,8);
+      const val = id => (wrap.querySelector('#'+id)||{}).value||'';
+
+      const drawTable = ()=>{
+        const prevScroll = b.scrollTop;
+        errBox.innerHTML = loadErr ? `<div class="fp-card" style="border-color:#fca5a5;background:#fef2f2;margin-bottom:12px">
+          <b>Daftar akun gagal dimuat:</b> ${esc(loadErr)}
+          <div class="fp-row" style="margin-top:8px"><button class="fp-btn ghost sm" id="akRetry">Coba lagi</button></div>
+        </div>` : '';
+        const retryBtn = errBox.querySelector('#akRetry');
+        if(retryBtn) retryBtn.onclick = ()=> load();
+
+        const rows = list
+          .filter(a=>!filter || canonicalClass(a.kelas)===filter)
+          .sort((x,y)=> (x.kelas+x.nama).localeCompare(y.kelas+y.nama));
+        tableBox.innerHTML = `
           <div class="fp-row" style="margin-bottom:10px">
             <select class="fp-select" id="akFilter" style="max-width:220px">
               <option value="">Semua kelas (${list.length} akun)</option>
@@ -859,68 +872,72 @@
               </td></tr>`).join('')}
           </tbody></table>` : `<div class="fp-empty">Belum ada akun siswa. Tambahkan lewat form di atas.</div>`}
         `;
+        b.scrollTop = prevScroll;
 
-        const gen = ()=> Math.random().toString(36).slice(2,8);
-        const val = id => (wrap.querySelector('#'+id)||{}).value||'';
-        const run = async (fn, button)=>{
-          const old = button && button.textContent;
-          if(button){ button.disabled=true; button.textContent='Memproses…'; }
-          try{ list = await fn(); loadErr=''; draw(); }
-          catch(e){ alert(e.message||e); if(button){ button.disabled=false; button.textContent=old; } }
-        };
-        const retryBtn = wrap.querySelector('#akRetry');
-        if(retryBtn) retryBtn.onclick = ()=> load();
-
-        wrap.querySelector('#akGen').onclick = ()=>{ wrap.querySelector('#akPw').value = gen(); };
-        wrap.querySelector('#akSave').onclick = ()=>{
-          const nis=val('akNis').trim(), nama=val('akNama').trim(), kelas=val('akKelas'), pw=val('akPw').trim();
-          if(!nis||!nama) return alert('NIS dan nama wajib diisi.');
-          if(!pw) return alert('Isi password (klik "Acak password" bila perlu).');
-          run(()=>Accounts.send({nis,nama,kelas,password:pw}).then(r=>{
-            alert(`Akun dibuat:\nNIS: ${nis}\nPassword: ${pw}\n\nBagikan ke siswa yang bersangkutan.`);
-            wrap.querySelector('#akNis').value=''; wrap.querySelector('#akNama').value=''; wrap.querySelector('#akPw').value='';
-            return r;
-          }));
-        };
-        wrap.querySelector('#akImport').onclick = ()=>{
-          const raw = val('akBulk').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
-          const skipped=[];
-          const rowsIn = raw.map(l=>{
-            const [nis,nama,kelas,password]=l.split(/[,;\t]/).map(s=>(s||'').trim());
-            const kls = canonicalClass(kelas);
-            if(!nis || !/^[A-Za-z0-9._-]{3,30}$/.test(nis) || !ALL_CLASSES.includes(kls)){ skipped.push(l); return null; }
-            return {nis,nama:nama||nis,kelas:kls,password:password||Math.random().toString(36).slice(2,8)};
-          }).filter(Boolean);
-          if(!rowsIn.length) return alert('Tidak ada baris valid.\nFormat: NIS,Nama,Kelas,Password\nKelas harus salah satu dari: '+ALL_CLASSES.join(', '));
-          const importBtn = wrap.querySelector('#akImport');
-          run(()=>Accounts.send({action:'bulk',accounts:rowsIn}).then(r=>{
-            alert(rowsIn.length+' akun diproses.'+(skipped.length? '\n'+skipped.length+' baris dilewati (kelas/NIS tidak valid).':'')+'\n\n'+rowsIn.map(x=>`${x.nis} · ${x.password}`).join('\n'));
-            wrap.querySelector('#akBulk').value=''; return r;
-          }), importBtn);
-        };
-        wrap.querySelector('#akCsv').onclick = ()=>{
-          const csv='NIS,Nama,Kelas,Terakhir Masuk\n'+list.map(a=>[a.nis,a.nama,a.kelas,a.terakhirMasuk||''].join(',')).join('\n');
-          const url=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
-          const a=document.createElement('a'); a.href=url; a.download='akun-siswa.csv'; a.click(); URL.revokeObjectURL(url);
-        };
-        wrap.querySelector('#akFilter').onchange = e=>{ filter=e.target.value; draw(); };
-        wrap.querySelectorAll('.akReset').forEach(btn=>btn.onclick=()=>{
+        tableBox.querySelector('#akFilter').onchange = e=>{ filter=e.target.value; drawTable(); };
+        tableBox.querySelectorAll('.akReset').forEach(btn=>btn.onclick=()=>{
           const acc = list.find(a=>a.nis===btn.dataset.n); if(!acc) return;
           const pw = prompt('Password baru untuk '+acc.nama+':', Math.random().toString(36).slice(2,8));
           if(!pw) return;
           run(()=>Accounts.send({nis:acc.nis,nama:acc.nama,kelas:acc.kelas,password:pw}).then(r=>{
             alert('Password '+acc.nis+' diubah menjadi: '+pw); return r;
-          }));
+          }), btn);
         });
-        wrap.querySelectorAll('.akDel').forEach(btn=>btn.onclick=()=>{
-          if(!confirm('Hapus akun '+btn.dataset.n+'?')) return;
-          run(()=>Accounts.send({action:'delete',nis:btn.dataset.n}));
+        tableBox.querySelectorAll('.akDel').forEach(btn=>btn.onclick=()=>{
+          const targetNis = btn.dataset.n;
+          if(!confirm('Hapus akun '+targetNis+'?')) return;
+          run(()=>Accounts.send({action:'delete',nis:targetNis}), btn);
         });
       };
 
+      const run = async (fn, button)=>{
+        const old = button && button.textContent;
+        if(button){ button.disabled=true; button.textContent='Memproses…'; }
+        try{ list = await fn(); loadErr=''; drawTable(); emitSync(); }
+        catch(e){ alert(e.message||e); if(button){ button.disabled=false; button.textContent=old; } }
+      };
+
+      wrap.querySelector('#akGen').onclick = ()=>{ wrap.querySelector('#akPw').value = gen(); };
+      wrap.querySelector('#akSave').onclick = ()=>{
+        const nis=val('akNis').trim(), nama=val('akNama').trim(), kelas=val('akKelas'), pw=val('akPw').trim();
+        if(!nis||!nama) return alert('NIS dan nama wajib diisi.');
+        if(!pw) return alert('Isi password (klik "Acak password" bila perlu).');
+        run(()=>Accounts.send({nis,nama,kelas,password:pw}).then(r=>{
+          alert(`Akun dibuat:\nNIS: ${nis}\nPassword: ${pw}\n\nBagikan ke siswa yang bersangkutan.`);
+          wrap.querySelector('#akNis').value=''; wrap.querySelector('#akNama').value=''; wrap.querySelector('#akPw').value='';
+          return r;
+        }), wrap.querySelector('#akSave'));
+      };
+      wrap.querySelector('#akImport').onclick = ()=>{
+        const raw = val('akBulk').split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+        const skipped=[];
+        const rowsIn = raw.map(l=>{
+          const [nis,nama,kelas,password]=l.split(/[,;\t]/).map(s=>(s||'').trim());
+          const kls = canonicalClass(kelas);
+          if(!nis || !/^[A-Za-z0-9._-]{3,30}$/.test(nis) || !ALL_CLASSES.includes(kls)){ skipped.push(l); return null; }
+          return {nis,nama:nama||nis,kelas:kls,password:password||Math.random().toString(36).slice(2,8)};
+        }).filter(Boolean);
+        if(!rowsIn.length) return alert('Tidak ada baris valid.\nFormat: NIS,Nama,Kelas,Password\nKelas harus salah satu dari: '+ALL_CLASSES.join(', '));
+        run(()=>Accounts.send({action:'bulk',accounts:rowsIn}).then(r=>{
+          alert(rowsIn.length+' akun diproses.'+(skipped.length? '\n'+skipped.length+' baris dilewati (kelas/NIS tidak valid).':'')+'\n\n'+rowsIn.map(x=>`${x.nis} · ${x.password}`).join('\n'));
+          wrap.querySelector('#akBulk').value=''; return r;
+        }), wrap.querySelector('#akImport'));
+      };
+      wrap.querySelector('#akCsv').onclick = ()=>{
+        const csv='NIS,Nama,Kelas,Terakhir Masuk\n'+list.map(a=>[a.nis,a.nama,a.kelas,a.terakhirMasuk||''].join(',')).join('\n');
+        const url=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+        const a=document.createElement('a'); a.href=url; a.download='akun-siswa.csv'; a.click(); URL.revokeObjectURL(url);
+      };
+
       const load = ()=> Accounts.list()
-        .then(a=>{ list=a; loadErr=''; draw(); })
-        .catch(e=>{ list=[]; loadErr=(e&&e.message)||String(e); draw(); });
+        .then(a=>{
+          if(JSON.stringify(a) !== JSON.stringify(list) || loadErr){
+            list=a; loadErr=''; drawTable();
+          }
+        })
+        .catch(e=>{ loadErr=(e&&e.message)||String(e); drawTable(); });
+
+      if(list.length) drawTable();
       load();
     }
   };
@@ -1319,14 +1336,28 @@
     if(!window.colabDb) return;
     if(window.colabDb.whenReady) await window.colabDb.whenReady();
     if(!window.colabDb.isReady()) return;
+    let lastSyncAt = Date.now(), lastDigest = '';
+    const PASSIVE_FEATS = new Set(['leaderboard','progres','progres_saya','nilai','laporan']);
+    const calcDigest = () => {
+      try {
+        return ['materi','tugas','lkpd','quiz','pengumuman'].map(k=>(localStorage.getItem('pb.guru.'+k)||'').length).join(':')
+          + '|' + (localStorage.getItem('pb.cached.accounts')||'').length
+          + '|' + (localStorage.getItem('pb.submissions.tugas')||'').length
+          + '|' + (localStorage.getItem('pb.submissions.quiz')||'').length;
+      } catch(_) { return ''; }
+    };
     const refreshPanel = () => {
-      if(_currentFeat && FEATURES[_currentFeat]) {
+      if(_currentFeat && PASSIVE_FEATS.has(_currentFeat) && FEATURES[_currentFeat]) {
         const b = document.getElementById('fpB');
         if(b && overlay.classList.contains('open')) FEATURES[_currentFeat].render(b);
       }
     };
-    const syncOnce = async () => {
+    const syncOnce = async (force) => {
       if(document.hidden || !window.colabDb.isReady()) return;
+      const now = Date.now();
+      // Hindari sync berulang mendadak saat menutup dialog confirm()/alert()
+      if(!force && (now - lastSyncAt) < 10000) return;
+      lastSyncAt = now;
       try{
         await SharedCatalog.pull();
         await Activity.pull();
@@ -1337,13 +1368,18 @@
             LS.set('pb.cached.accounts', dedupeAccounts(res.accounts));
           }
         }
-        emitSync();
-        refreshPanel();
+        const nextDigest = calcDigest();
+        if(nextDigest !== lastDigest){
+          lastDigest = nextDigest;
+          emitSync();
+          refreshPanel();
+        }
       }catch(_){}
     };
-    setInterval(syncOnce, 15000);
-    window.addEventListener('focus', syncOnce);
-    document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) syncOnce(); });
+    lastDigest = calcDigest();
+    setInterval(()=>syncOnce(true), 20000);
+    window.addEventListener('focus', ()=>syncOnce(false));
+    document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) syncOnce(false); });
   })();
 
   // ── QuizAlerts: indikator "pengerjaan baru" untuk guru ──
