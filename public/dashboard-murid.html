@@ -893,7 +893,7 @@ render();
 
     function lsGet(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch(e){return d;}}
     function canon(k){return String(k||'').trim().toUpperCase().replace(/\s+/g,'-');}
-    function matchK(k){var c=canon(k);return !c||c==='ALL'||c==='SEMUA-KELAS'||c===kelas;}
+    function matchK(k){return String(k||'').split(',').some(function(p){var c=canon(p);return !c||c==='ALL'||c==='SEMUA-KELAS'||c===kelas;});}
     function syncStudentUI(){
       var nis=localStorage.getItem('pb.murid.nis')||'';
       var tugas=lsGet('pb.guru.tugas',[]).filter(function(t){return t&&matchK(t.k||t.kelas)&&(t.s!=='Draft');});

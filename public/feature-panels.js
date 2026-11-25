@@ -72,6 +72,14 @@
   .fp-chk input{width:17px;height:17px;accent-color:#4f46e5}
   .fp-sbar{height:8px;border-radius:999px;background:#e2e8f0;overflow:hidden;margin-top:8px}
   .fp-sfill{height:100%;border-radius:999px;background:linear-gradient(90deg,#4f46e5,#06b6d4);transition:width .35s ease}
+  .fp-mpick{position:relative;display:inline-block;min-width:155px}
+  .fp-mpick-btn{text-align:left;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:26px}
+  .fp-mpick-pop{display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:10020;min-width:260px;background:#fff;border:1px solid #cbd5e1;border-radius:12px;padding:10px;box-shadow:0 16px 40px rgba(15,23,42,.22)}
+  .fp-mpick.open .fp-mpick-pop{display:block}
+  .fp-mpick-pre{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #e2e8f0}
+  .fp-mpick-list{display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:210px;overflow-y:auto}
+  [data-theme="dark"] .fp-mpick-pop{background:#1e293b;border-color:#475569;color:#f8fafc}
+  [data-theme="dark"] .fp-mpick-pre{border-color:#334155}
   [data-theme="dark"] .fp-modal{background:#0f172a;color:#e2e8f0;box-shadow:0 25px 70px -10px rgba(0,0,0,.7),0 0 0 1px rgba(148,163,184,.15)}
   [data-theme="dark"] .fp-head{background:linear-gradient(135deg,#1e293b 0%,#1e1b4b 100%);border-color:#334155}
   [data-theme="dark"] .fp-title,[data-theme="dark"] .fp-card h4,[data-theme="dark"] .fp-item .t{color:#f8fafc}
@@ -102,7 +110,35 @@
     <div class="fp-body" id="fpB"></div>
   </div>`;
   document.body.appendChild(overlay);
-  overlay.addEventListener('click', e => { if(e.target===overlay) close(); });
+  overlay.addEventListener('click', e => {
+    if(e.target===overlay){ close(); return; }
+    const btn = e.target.closest('.fp-mpick-btn');
+    if(btn){
+      const wrap = btn.closest('.fp-mpick');
+      const was = wrap.classList.contains('open');
+      overlay.querySelectorAll('.fp-mpick.open').forEach(x=>x.classList.remove('open'));
+      if(!was) wrap.classList.add('open');
+      return;
+    }
+    const preBtn = e.target.closest('[data-pre]');
+    if(preBtn){
+      const wrap = preBtn.closest('.fp-mpick');
+      const pre = preBtn.dataset.pre;
+      const cbs = [...wrap.querySelectorAll('.fp-mpick-list input[type="checkbox"]')];
+      if(pre==='ALL'){ cbs.forEach(c=>c.checked=false); }
+      else {
+        const group = cbs.filter(c=>c.value.startsWith(pre+'-'));
+        const allOn = group.every(c=>c.checked);
+        group.forEach(c=>c.checked=!allOn);
+      }
+      syncMultiPick(wrap);
+      return;
+    }
+    if(!e.target.closest('.fp-mpick')) overlay.querySelectorAll('.fp-mpick.open').forEach(x=>x.classList.remove('open'));
+  });
+  overlay.addEventListener('change', e => {
+    if(e.target.matches('.fp-mpick-list input[type="checkbox"]')) syncMultiPick(e.target.closest('.fp-mpick'));
+  });
   overlay.querySelector('.fp-close').addEventListener('click', close);
   document.addEventListener('keydown', e => { if(e.key==='Escape') close(); });
 
@@ -144,15 +180,75 @@
   ];
   const ALL_CLASSES = CLASS_CATALOG.map(c=>c.n);
   const classOptionsHtml = (sel)=>`<option value="ALL" ${sel==='ALL'?'selected':''}>🌐 Semua Kelas</option>`+ALL_CLASSES.map(n=>`<option value="${n}" ${n===sel?'selected':''}>${n}</option>`).join('');
-  const canonicalClass = (value)=>{
+  const canonOne = (value)=>{
     const raw=String(value||'').trim().toUpperCase().replace(/\s+/g,'-').replace(/--+/g,'-');
-    if(raw==='ALL'||raw==='SEMUA-KELAS') return 'ALL';
+    if(raw==='ALL'||raw==='SEMUA-KELAS'||raw==='SEMUA') return 'ALL';
     const roman=raw.match(/^(VIII|XII|XI|X)-?([A-D]|[1-4])$/);
     return roman ? `${roman[1]}-${roman[2]}` : raw;
   };
+  const canonicalClass = (value)=>{
+    if(Array.isArray(value)){
+      const arr=value.map(canonOne).filter(Boolean);
+      return (!arr.length || arr.includes('ALL')) ? 'ALL' : [...new Set(arr)].join(', ');
+    }
+    const str=String(value||'').trim();
+    if(!str) return '';
+    if(str.includes(',')){
+      const arr=str.split(',').map(canonOne).filter(Boolean);
+      return (!arr.length || arr.includes('ALL')) ? 'ALL' : [...new Set(arr)].join(', ');
+    }
+    return canonOne(str);
+  };
+  const parseClassList = (k)=>{
+    if(Array.isArray(k)) return k.map(canonOne).filter(Boolean);
+    const s=String(k||'').trim();
+    if(!s) return [];
+    return s.split(',').map(canonOne).filter(Boolean);
+  };
+  const multiPickLabel = (val)=>{
+    const list=parseClassList(val);
+    if(!list.length || list.includes('ALL')) return '🌐 Semua Kelas';
+    return list.length===1 ? '🎯 '+list[0] : '✅ '+list.slice(0,2).join(', ')+(list.length>2?' +'+(list.length-2):'')+' ('+list.length+')';
+  };
+  const syncMultiPick = (wrap)=>{
+    if(!wrap) return;
+    const cbs=[...wrap.querySelectorAll('.fp-mpick-list input[type="checkbox"]')];
+    const sel=cbs.filter(c=>c.checked).map(c=>c.value);
+    const val=(!sel.length || sel.length===cbs.length) ? 'ALL' : sel.join(', ');
+    const inp=wrap.querySelector('input[type="hidden"]');
+    const btn=wrap.querySelector('.fp-mpick-btn');
+    if(inp){ inp.value=val; inp.dispatchEvent(new Event('change',{bubbles:true})); }
+    if(btn) btn.textContent=multiPickLabel(val)+' ▾';
+  };
+  const multiClassPickerHtml = (id, sel='ALL', style='width:165px')=>{
+    const clean=canonicalClass(sel)||'ALL';
+    const chosen=clean==='ALL'?[]:parseClassList(clean);
+    return `<div class="fp-mpick" style="${style}">
+      <input type="hidden" id="${id}" value="${esc(clean)}"/>
+      <button type="button" class="fp-select fp-mpick-btn" aria-label="Pilih satu atau lebih kelas">${esc(multiPickLabel(clean))} ▾</button>
+      <div class="fp-mpick-pop">
+        <div class="fp-mpick-pre">
+          <button type="button" class="fp-btn sm" data-pre="ALL">🌐 Semua</button>
+          <button type="button" class="fp-btn sm ghost" data-pre="VIII">VIII</button>
+          <button type="button" class="fp-btn sm ghost" data-pre="X">X</button>
+          <button type="button" class="fp-btn sm ghost" data-pre="XI">XI</button>
+          <button type="button" class="fp-btn sm ghost" data-pre="XII">XII</button>
+        </div>
+        <div class="fp-mpick-list">${ALL_CLASSES.map(n=>`<label class="fp-chk"><input type="checkbox" value="${n}" ${chosen.includes(n)?'checked':''}> ${n}</label>`).join('')}</div>
+      </div>
+    </div>`;
+  };
   const kelasLabel = (k)=> canonicalClass(k)==='ALL' ? 'Semua Kelas' : (canonicalClass(k)||'-');
-  const matchesClass = (k, my)=> canonicalClass(k)==='ALL' || canonicalClass(k)===canonicalClass(my);
-  const isValidClass = (k)=> canonicalClass(k)==='ALL' || ALL_CLASSES.includes(canonicalClass(k));
+  const matchesClass = (k, my)=>{
+    const list=parseClassList(k);
+    if(!list.length) return false;
+    const mc=canonOne(my);
+    return list.includes('ALL') || list.includes(mc);
+  };
+  const isValidClass = (k)=>{
+    const list=parseClassList(k);
+    return list.length>0 && list.every(c=>c==='ALL'||ALL_CLASSES.includes(c));
+  };
   const SUBJECTS = {KKA:'Koding dan Kecerdasan Artifisial (KKA)',Informatika:'Informatika'};
   const materialSubject = m => Object.hasOwn(SUBJECTS,m.mapel) ? m.mapel : '';
   const subjectOptionsHtml = (selected, allowed=Object.keys(SUBJECTS), empty='Belum dikelompokkan') =>
@@ -777,7 +873,7 @@
         <div class="fp-card" style="display:grid;gap:10px;margin-bottom:12px">
           <div class="fp-row">
             <input class="fp-input" id="mj" placeholder="Judul materi" style="flex:1;min-width:200px"/>
-            <select class="fp-select" id="mk" style="width:120px">${classOptionsHtml()}</select>
+            ${multiClassPickerHtml('mk','ALL','width:170px')}
             <select class="fp-select" id="mm" aria-label="Mata pelajaran materi baru" style="flex:1;min-width:200px">${subjectOptionsHtml('',undefined,'Pilih mata pelajaran')}</select>
           </div>
           <div class="fp-row">
@@ -1311,7 +1407,7 @@
             <div class="fp-row">
               <input class="fp-input" id="tj" placeholder="Judul tugas" style="flex:1;min-width:200px"/>
               <input class="fp-input" id="td" placeholder="Deadline" style="width:160px"/>
-              <select class="fp-select" id="tk" style="width:120px">${classOptionsHtml()}</select>
+              ${multiClassPickerHtml('tk','ALL','width:165px')}
             </div>
             <textarea class="fp-input" id="tdesc" placeholder="Instruksi tugas..." style="width:100%;min-height:60px;resize:vertical"></textarea>
             <div class="fp-row">
@@ -1470,7 +1566,7 @@
           <div class="fp-card" style="display:grid;gap:10px;margin-bottom:12px">
             <div class="fp-row">
               <input class="fp-input" id="lj" placeholder="Judul LKPD" style="flex:1;min-width:200px"/>
-              <select class="fp-select" id="lk" style="width:120px">${classOptionsHtml()}</select>
+              ${multiClassPickerHtml('lk','ALL','width:165px')}
             </div>
             <textarea class="fp-input" id="ldesc" placeholder="Petunjuk pengerjaan..." style="width:100%;min-height:60px;resize:vertical"></textarea>
             <div class="fp-row">
@@ -1650,7 +1746,7 @@
           <div class="fp-card" style="display:grid;gap:10px;margin-bottom:12px">
             <div class="fp-row">
               <input class="fp-input" id="qj" placeholder="Judul quiz" style="flex:1;min-width:200px"/>
-              <select class="fp-select" id="qk" style="width:120px">${classOptionsHtml()}</select>
+              ${multiClassPickerHtml('qk','ALL','width:165px')}
               <button class="fp-btn sm" id="qAdd">+ Quiz</button>
             </div>
             <div style="font-size:11px;color:#64748b">Setelah dibuat, klik "Soal" untuk menambah pertanyaan, lalu "Hasil" untuk rekap nilai siswa. Semua quiz otomatis muncul di Arena Game Quiz.</div>
@@ -2079,7 +2175,7 @@
             <div class="fp-row" style="margin-top:8px">
               <select class="fp-select" id="jdH" style="width:115px"><option>Senin</option><option>Selasa</option><option>Rabu</option><option>Kamis</option><option>Jumat</option><option>Sabtu</option></select>
               <input class="fp-input" id="jdJ" placeholder="07:30–09:00" style="width:130px"/>
-              <select class="fp-select" id="jdK" style="width:125px">${classOptionsHtml('X-1')}</select>
+              ${multiClassPickerHtml('jdK','X-1','width:160px')}
               <select class="fp-select" id="jdM" style="width:160px"><option>Informatika</option><option>KKA</option></select>
               <input class="fp-input" id="jdR" placeholder="Ruang (mis. Lab Kom)" style="flex:1;min-width:140px"/>
               <button class="fp-btn sm" id="jdAdd">+ Tambah</button>

@@ -1169,7 +1169,7 @@ setTimeout(()=>{if(window.lucide)lucide.createIcons()},100);
   var ALL=[].concat(CLASSES.VIII,CLASSES.X,CLASSES.XI,CLASSES.XII);
   var lvl='ALL', data={catalog:{},activity:{},accounts:null};
   function canon(k){var r=String(k||'').trim().toUpperCase().replace(/\s+/g,'-');var m=r.match(/^(VIII|XII|XI|X)-?([A-D]|[1-4])$/);return m?m[1]+'-'+m[2]:r;}
-  function inLvl(k){var c=canon(k);if(lvl==='ALL'||c==='ALL'||c==='SEMUA-KELAS')return true;return CLASSES[lvl].indexOf(c)>=0;}
+  function inLvl(k){if(lvl==='ALL')return true;return String(k||'').split(',').some(function(p){var c=canon(p);return c==='ALL'||c==='SEMUA-KELAS'||CLASSES[lvl].indexOf(c)>=0;});}
   function q(s){return document.querySelector(s);}
   function header(){
     var d=new Date(),h=d.getHours();

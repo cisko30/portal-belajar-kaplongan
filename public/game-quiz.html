@@ -157,9 +157,12 @@ const BUILTIN_QUIZZES = [
 ];
 
 const matchesKelas=(qk,my)=>{
-  if(!my||!qk||qk==='Semua'||qk==='ALL') return true;
-  const c=String(qk).replace(/\s/g,'').toUpperCase(), m=String(my).replace(/\s/g,'').toUpperCase();
-  return c===m || m.startsWith(c+'-');
+  if(!my||!qk) return true;
+  const m=String(my).replace(/\s/g,'').toUpperCase();
+  return String(qk).split(',').some(part=>{
+    const c=part.replace(/\s/g,'').toUpperCase();
+    return !c||c==='SEMUA'||c==='ALL'||c===m||m.startsWith(c+'-');
+  });
 };
 async function load(){
   app.innerHTML='<h2 class="f">Memuat quiz…</h2>';
@@ -597,7 +600,9 @@ async function manage(){
    <div id="aiM" style="margin-top:8px;font-size:14px">Hasil AI akan masuk ke formulir di bawah — periksa dulu, lalu simpan.</div></div>
   <div class="card"><h3 class="f" style="margin-top:0">➕ Paket game baru</h3>
    <input class="in" id="gj" placeholder="Judul, mis. Game Algoritma Seru"/><div style="height:8px"></div>
-   <select id="gk">${KLS.map(k=>`<option>${k}</option>`).join('')}</select><div style="height:8px"></div>
+   <input type="hidden" id="gk" value="Semua"/>
+   <div style="font-size:13px;font-weight:700;margin-bottom:6px">Pilih kelas tujuan (bisa lebih dari 1):</div>
+   <div id="gkBoxes" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${KLS.map(k=>`<label style="display:inline-flex;align-items:center;gap:5px;padding:6px 10px;border-radius:10px;background:#ffffff14;border:1.5px solid ${k==='Semua'?'#ffcb05':'#ffffff24'};font-size:13px;cursor:pointer"><input type="checkbox" value="${k}" ${k==='Semua'?'checked':''}/> ${k}</label>`).join('')}</div>
    <textarea class="ta" id="gs" placeholder="Satu soal per baris:\nPertanyaan | Opsi A | Opsi B | Opsi C | Opsi D | Jawaban (A/B/C/D)\n\nContoh:\nLangkah-langkah menyelesaikan masalah disebut? | Algoritma | Abstraksi | Pola | Data | A"></textarea>
    <div id="gm" style="margin:8px 0;font-size:14px"></div><button class="btn" id="gSave">Simpan & kirim ke siswa</button></div>
   <div class="card" style="margin-top:16px"><h3 class="f" style="margin-top:0">📦 Paket soal yang tersedia (${games.length})</h3>
@@ -624,6 +629,15 @@ async function manage(){
     localStorage.setItem('pb.guru.quiz',JSON.stringify(next.quiz||[]));
     return next;
   };
+  app.querySelectorAll('#gkBoxes input[type="checkbox"]').forEach(cb=>cb.onchange=()=>{
+    const cbs=[...app.querySelectorAll('#gkBoxes input[type="checkbox"]')];
+    if(cb.value==='Semua'&&cb.checked) cbs.forEach(x=>{if(x.value!=='Semua')x.checked=false;});
+    else if(cb.value!=='Semua'&&cb.checked) cbs.forEach(x=>{if(x.value==='Semua')x.checked=false;});
+    const sel=cbs.filter(x=>x.checked).map(x=>x.value);
+    if(!sel.length){cbs[0].checked=true; $('#gk').value='Semua';}
+    else $('#gk').value=sel.includes('Semua')?'Semua':sel.join(', ');
+    cbs.forEach(x=>x.parentElement.style.borderColor=x.checked?'#ffcb05':'#ffffff24');
+  });
   $('#aiGo').onclick=async()=>{const topik=$('#aiT').value.trim();if(topik.length<3)return $('#aiM').textContent='⚠️ Tulis topik dulu.';
     const btn=$('#aiGo');btn.disabled=true;btn.textContent='⏳ AI sedang menyusun soal…';$('#aiM').textContent='Mohon tunggu sekitar 10–40 detik.';
     try{const r=await fetch('/api/game/generate',{method:'POST',headers:{'Content-Type':'application/json','x-guru-passphrase':pass},body:JSON.stringify({topik,kelas:$('#gk').value,jumlah:+$('#aiN').value,tingkat:$('#aiL').value})});
