@@ -1,0 +1,5 @@
+/ /portal-belajar.html 200
+/login /auth.html 200
+/guru /dashboard-guru.html 200
+/murid /dashboard-murid.html 200
+/quiz /game-quiz.html 200

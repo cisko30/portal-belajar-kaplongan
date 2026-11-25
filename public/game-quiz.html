@@ -1,0 +1,655 @@
+<!doctype html>
+<html lang="id"><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Arena Game Quiz — Portal Belajar</title>
+<meta name="description" content="Main quiz seru ala Blooket & Wordwall: Gold Rush, Balon Pecah, dan Kartu Cocok."/>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@600;800&display=swap" rel="stylesheet"/>
+<style>
+:root{--bg:#120933;--card:#221359;--y:#ffcb05;--p:#ff5ca8;--g:#2ee59d;--b:#38bdf8;--o:#ff8a3d;--t:#fff}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:Nunito,system-ui,sans-serif;color:var(--t);
+background:radial-gradient(circle at 15% 12%,#5b21b6 0,transparent 42%),radial-gradient(circle at 85% 88%,#be185d 0,transparent 42%),radial-gradient(circle at 50% 50%,#0f172a 0,var(--bg) 100%);overflow-x:hidden}
+h1,h2,h3,.f{font-family:Fredoka,sans-serif;letter-spacing:.01em}
+.wrap{max-width:1020px;margin:0 auto;padding:22px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.btn{border:0;border-radius:14px;padding:12px 18px;font:700 16px Fredoka;cursor:pointer;color:#1e1147;background:linear-gradient(180deg,#fde047,#eab308);box-shadow:0 5px 0 #a16207,0 10px 20px #0004;transition:transform .12s,filter .15s}
+.btn:hover{filter:brightness(1.06)}.btn:active{transform:translateY(4px);box-shadow:0 1px 0 #a16207}.btn.ghost{background:#ffffff1f;color:#fff;box-shadow:0 5px 0 #0004;backdrop-filter:blur(6px)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:16px}
+.card{background:linear-gradient(160deg,rgba(45,27,105,.92),rgba(24,14,62,.94));border-radius:22px;padding:20px;border:2px solid #ffffff22;box-shadow:0 14px 32px rgba(0,0,0,.32)}
+.mode{cursor:pointer;position:relative;overflow:hidden;transition:transform .18s cubic-bezier(.22,1,.36,1),border-color .18s,box-shadow .18s}
+.mode::before{content:'';position:absolute;inset:0;background:radial-gradient(circle at top right,rgba(255,203,5,.14),transparent 60%);opacity:0;transition:opacity .2s}
+.mode:hover{transform:translateY(-6px) scale(1.015);border-color:#ffcb0588;box-shadow:0 18px 36px rgba(0,0,0,.45)}.mode:hover::before{opacity:1}
+.mode .ic{font-size:46px;filter:drop-shadow(0 6px 10px #0006);transition:transform .2s}.mode:hover .ic{transform:scale(1.12) rotate(-4deg)}
+.mode-tag{display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:800;background:#ffffff1a;color:#fde047;margin-bottom:8px}
+.hud{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:14px 0;padding:10px 14px;border-radius:18px;background:#ffffff12;border:1px solid #ffffff1c;backdrop-filter:blur(8px)}
+.hud.fever{border-color:#ffcb05;box-shadow:0 0 22px #ffcb0555}
+.chip{background:#ffffff20;padding:7px 14px;border-radius:999px;font:700 15.5px Fredoka;display:inline-flex;align-items:center;gap:5px}
+.q{font:600 clamp(18px,3vw,26px) Fredoka;text-align:center;background:linear-gradient(180deg,#ffffff,#f1f5f9);color:#1e1147;border-radius:22px;padding:24px;margin:10px 0 16px;box-shadow:0 10px 26px rgba(0,0,0,.28)}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:12px}@media(max-width:600px){.opts{grid-template-columns:1fr}}
+.opt{border:0;border-radius:18px;padding:18px;font:600 17px Fredoka;color:#fff;cursor:pointer;min-height:76px;box-shadow:0 6px 0 #0005,inset 0 2px 0 #ffffff33;text-align:left;transition:transform .1s,filter .12s}
+.opt:hover:not(:disabled){transform:translateY(-2px);filter:brightness(1.07)}.opt:active:not(:disabled){transform:translateY(3px)}
+.opt:nth-child(1){background:linear-gradient(180deg,#f43f5e,#be123c)}.opt:nth-child(2){background:linear-gradient(180deg,#3b82f6,#1d4ed8)}.opt:nth-child(3){background:linear-gradient(180deg,#f59e0b,#b45309)}.opt:nth-child(4){background:linear-gradient(180deg,#22c55e,#15803d)}
+.opt.ok{outline:5px solid var(--g);box-shadow:0 0 24px #2ee59d88}.opt.no{opacity:.42;filter:grayscale(.4)}
+.chests{display:flex;gap:18px;justify-content:center;flex-wrap:wrap;margin:14px 0}
+.chest{font-size:68px;cursor:pointer;background:linear-gradient(160deg,#ffffff22,#ffffff0a);border:2px solid #ffffff26;border-radius:24px;padding:22px 28px;min-width:140px;text-align:center;transition:transform .18s,border-color .18s,box-shadow .18s;box-shadow:0 12px 26px #0005}
+.chest:hover{transform:translateY(-8px) scale(1.07) rotate(3deg);border-color:var(--y);box-shadow:0 16px 32px #ffcb0544}
+.chest.picked{background:linear-gradient(160deg,#ffcb0544,#ff8a3d33);border-color:var(--y);transform:scale(1.06)}
+.chest.missed{opacity:.55;transform:scale(.94)}
+.chest-lbl{font:700 13px Nunito;margin-top:8px;color:#fff;max-width:140px}
+.arena{position:relative;height:440px;border-radius:24px;overflow:hidden;background:linear-gradient(180deg,#0284c7 0%,#38bdf8 55%,#bae6fd 100%);border:3px solid #ffffff33;box-shadow:inset 0 0 40px #0002}
+.arena::before,.arena::after{content:'☁️';position:absolute;font-size:52px;opacity:.55;pointer-events:none;animation:drift 18s linear infinite}
+.arena::before{top:28px;left:-10%}.arena::after{top:110px;left:-25%;font-size:38px;animation-duration:25s;animation-delay:4s}
+@keyframes drift{to{transform:translateX(130vw)}}
+.balloon{position:absolute;bottom:-140px;width:154px;min-height:112px;border-radius:50% 50% 46% 46%;display:flex;align-items:center;justify-content:center;text-align:center;padding:14px;font:600 13.5px Fredoka;color:#fff;cursor:pointer;box-shadow:inset -12px -12px 0 #0002,inset 10px 10px 18px #ffffff44,0 10px 20px #0003;animation:rise linear forwards}
+.balloon::after{content:'';position:absolute;bottom:-18px;left:50%;width:2px;height:18px;background:#ffffffaa;transform:translateX(-50%)}
+@keyframes rise{to{transform:translateY(-640px)}}
+.pairs{display:grid;grid-template-columns:1fr 1fr;gap:12px}.tile{background:linear-gradient(180deg,#fff,#f8fafc);color:#1e1147;border-radius:16px;padding:14px;font:600 14.5px Fredoka;cursor:pointer;border:4px solid transparent;min-height:64px;box-shadow:0 6px 0 #cbd5e1;transition:transform .12s,border-color .12s}
+.tile:hover:not(.done){transform:translateY(-2px)}.tile.sel{border-color:var(--y);background:#fef9c3;transform:scale(1.03)}.tile.done{background:linear-gradient(180deg,#4ade80,#22c55e);color:#fff;opacity:.75;pointer-events:none;box-shadow:none}.tile.bad{animation:shake .3s}
+@keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+.pop{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;font:700 clamp(38px,6vw,64px) Fredoka;text-shadow:0 6px 0 #0006;animation:pop .95s forwards;z-index:25;text-align:center;padding:20px}
+@keyframes pop{from{transform:scale(.3);opacity:0}30%{transform:scale(1.18);opacity:1}to{transform:scale(1);opacity:0}}
+.conf{position:fixed;top:-20px;width:10px;height:16px;z-index:8;animation:fall 2.4s linear forwards}@keyframes fall{to{transform:translateY(110vh) rotate(720deg)}}
+select{padding:12px 14px;border-radius:14px;border:2px solid #ffffff2b;background:#1a1044;color:#fff;font:700 15px Nunito;width:100%}
+.bar{height:12px;background:#ffffff22;border-radius:99px;overflow:hidden}.bar>div{height:100%;background:linear-gradient(90deg,#2ee59d,#38bdf8);transition:width .35s}
+.lb li{padding:8px 0;border-bottom:1px solid #ffffff14;display:flex;justify-content:space-between;gap:10px}
+.ava{font-size:32px;cursor:pointer;padding:6px 10px;border-radius:14px;background:#ffffff14;border:3px solid transparent;transition:transform .12s}.ava:hover{transform:scale(1.1)}.ava.on{border-color:var(--y);background:#ffcb0533}
+.holes{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;padding:18px;border-radius:24px;background:linear-gradient(180deg,#166534,#14532d);border:3px solid #22c55e44;box-shadow:inset 0 10px 26px #0004}
+.hole{height:126px;border-radius:50%/40%;background:radial-gradient(circle at 50% 60%,#1c1917,#3b2a1a);position:relative;overflow:hidden;box-shadow:inset 0 12px 0 #0008}
+.mole{position:absolute;left:7%;right:7%;bottom:-124px;height:112px;border-radius:42px 42px 12px 12px;background:linear-gradient(180deg,#d97706,#92400e);border:2px solid #fde68a66;color:#fff;font:600 12.5px Fredoka;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px;cursor:pointer;transition:bottom .24s cubic-bezier(.34,1.56,.64,1);box-shadow:0 6px 14px #0005}.mole.up{bottom:4px}
+.track{background:linear-gradient(90deg,#0f172a,#1e1b4b);border:1px solid #ffffff1f;border-radius:16px;padding:10px 12px;margin:8px 0;position:relative;height:58px}
+.rk{position:absolute;top:10px;font-size:32px;transition:left .45s cubic-bezier(.22,1,.36,1);filter:drop-shadow(0 0 10px #ff8a3d88)}
+.lvl{display:flex;align-items:center;gap:12px}.lvl .bar{flex:1}
+.ta{width:100%;min-height:160px;border-radius:12px;padding:10px;font:14px monospace}
+input.in{padding:12px;border-radius:12px;border:0;font:600 15px Nunito;width:100%}
+.float{animation:fl 3s ease-in-out infinite}@keyframes fl{50%{transform:translateY(-8px)}}
+.adv-wrap{display:grid;grid-template-columns:1fr 220px;gap:16px;align-items:start}@media(max-width:740px){.adv-wrap{grid-template-columns:1fr}}
+.adv-board{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;background:linear-gradient(145deg,#134e4a,#1e1b4b);padding:14px;border-radius:20px;border:3px solid #ffffff26;box-shadow:inset 0 0 30px #0004}
+.adv-tile{aspect-ratio:1/1;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:26px;background:#ffffff14;border:2px solid #ffffff1a;cursor:pointer;position:relative;transition:transform .12s,background .2s;user-select:none}
+.adv-tile:hover{transform:scale(1.04);background:#ffffff24}
+.adv-tile.wall{background:#0f172a;border-color:#334155;cursor:not-allowed;opacity:.88}
+.adv-tile.visited{background:#2ee59d1f;border-color:#2ee59d44}
+.adv-tile.player{background:linear-gradient(135deg,#ffcb05,#ff8a3d);border-color:#fff;box-shadow:0 0 18px #ffcb0588;transform:scale(1.06)}
+.adv-tile.chest{background:#f59e0b2e;border-color:#fbbf24;animation:pulseChest 1.8s infinite}
+.adv-tile.finish{background:#10b98138;border-color:#34d399;box-shadow:0 0 14px #34d39966}
+.adv-tile.monster{background:#f43f5e2e;border-color:#fb7185}
+.adv-tile.energy{background:#38bdf82e;border-color:#38bdf8}
+@keyframes pulseChest{50%{box-shadow:0 0 14px #fbbf2499}}
+.adv-sub{font-size:9.5px;font-weight:800;position:absolute;bottom:2px;opacity:.9;color:#fff;text-shadow:0 1px 2px #000}
+.adv-dpad{display:grid;grid-template-columns:repeat(3,56px);gap:8px;justify-content:center;margin:10px auto}
+.adv-dpad button{height:48px;border:0;border-radius:12px;background:#ffffff24;color:#fff;font-size:22px;cursor:pointer;box-shadow:0 4px 0 #0004}
+.adv-dpad button:active{transform:translateY(3px);box-shadow:0 1px 0 #0004}
+.adv-modal{position:fixed;inset:0;background:rgba(15,23,42,.82);backdrop-filter:blur(6px);z-index:20;display:flex;align-items:center;justify-content:center;padding:18px}
+.adv-mbox{background:var(--card);border:3px solid var(--y);border-radius:22px;max-width:640px;width:100%;padding:22px;box-shadow:0 24px 60px #0008;animation:popIn .2s ease-out}
+@keyframes popIn{from{transform:scale(.9);opacity:0}to{transform:scale(1);opacity:1}}
+</style></head><body><div class="wrap" id="app"></div>
+<script src="/colab-client.js"></script>
+<script>
+const $=s=>document.querySelector(s), app=$('#app');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const rd=k=>{const v=localStorage.getItem(k);try{return JSON.parse(v)}catch(_){return v}};
+const nama=rd('pb.murid.nama')||'Pemain', kelas=String(rd('pb.murid.myClass')||'').replace(/\s/g,'');
+const shuffle=a=>{a=[...a];for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a};
+let MUTE=rd('pb.game.mute')===1;let AC;function beep(f=660,d=.12,t='triangle'){if(MUTE)return;try{AC=AC||new AudioContext();const o=AC.createOscillator(),g=AC.createGain();o.type=t;o.frequency.value=f;g.gain.setValueAtTime(.2,AC.currentTime);g.gain.exponentialRampToValueAtTime(.001,AC.currentTime+d);o.connect(g).connect(AC.destination);o.start();o.stop(AC.currentTime+d)}catch(_){}}
+const good=()=>{beep(660);setTimeout(()=>beep(990),90)}, bad=()=>beep(160,.25,'sawtooth');
+function pop(t,c){const d=document.createElement('div');d.className='pop';d.style.color=c||'#ffcb05';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),900)}
+function confetti(n=80){for(let i=0;i<n;i++){const c=document.createElement('div');c.className='conf';c.style.left=Math.random()*100+'vw';c.style.background=['#ffcb05','#ff5ca8','#2ee59d','#38bdf8','#ff8a3d'][i%5];c.style.animationDelay=Math.random()*.8+'s';document.body.appendChild(c);setTimeout(()=>c.remove(),3500)}}
+
+let QUIZZES=[], quiz=null;
+/* ── Tingkat kesulitan adaptif per mode (1–10) ── */
+const DL=k=>Math.max(1,Math.min(10,+(rd('pb.game.diff.'+k)||1)));
+const setDL=(k,v)=>localStorage.setItem('pb.game.diff.'+k,Math.max(1,Math.min(10,v)));
+const stars=k=>'🔥'.repeat(Math.ceil(DL(k)/2));
+/* Soal berkembang: makin tinggi level, muncul variasi soal baru (dibalik & benar/salah) */
+function evolve(src,lv){let out=src.map(s=>({...s}));
+  if(lv>=3&&src.length>=4)out=out.concat(shuffle(src).slice(0,Math.ceil(src.length*.3)).map(s=>{const others=shuffle(src.filter(x=>x!==s)).slice(0,3).map(x=>x.q);const o=shuffle([s.q,...others]);return{q:'🔄 Pertanyaan mana yang jawabannya: "'+s.o[s.a]+'"?',o,a:o.indexOf(s.q)}}));
+  if(lv>=5)out=out.concat(shuffle(src).slice(0,Math.ceil(src.length*.3)).map(s=>{const t=Math.random()<.5,k=t?s.a:(s.a+1+(Math.random()*(s.o.length-1)|0))%s.o.length;return{q:'⚖️ Benar atau salah? '+s.q+' → Jawabannya "'+s.o[k]+'"',o:['Benar','Salah'],a:t?0:1}}));
+  return shuffle(out)}
+const qTime=lv=>Math.max(5,22-lv*2);
+function startQT(lv,onOut){let t=qTime(lv);const el=$('#qt');if(el)el.textContent=t;const h=setInterval(()=>{t--;const e=$('#qt');if(!e){clearInterval(h);return}e.textContent=t;if(t<=0){clearInterval(h);onOut()}},1000);return h}
+const BUILTIN_QUIZZES = [
+  {
+    j: 'Quiz Informatika & Berpikir Komputasional Kelas X', k: 'X',
+    soal: [
+      { q: 'Manakah dari berikut yang BUKAN merupakan pilar Berpikir Komputasional?', o: ['Dekomposisi', 'Pengenalan Pola', 'Kompilasi Manual', 'Abstraksi'], a: 2 },
+      { q: 'Algoritma yang membagi dua ruang pencarian pada list terurut adalah...', o: ['Binary Search', 'Linear Search', 'Bubble Sort', 'Selection Sort'], a: 0 },
+      { q: 'Simbol belah ketupat (diamond) pada flowchart berfungsi untuk...', o: ['Awal atau akhir program', 'Percabangan / Keputusan kondisi', 'Proses perhitungan', 'Input data keyboard'], a: 1 },
+      { q: 'Perintah Python untuk menampilkan tulisan ke layar terminal adalah...', o: ['echo()', 'System.out.println()', 'print()', 'output()'], a: 2 },
+      { q: 'Tipe data angka berkoma/desimal pada bahasa pemrograman disebut...', o: ['Integer', 'Boolean', 'Float', 'String'], a: 2 },
+      { q: 'Komponen hardware yang mengeksekusi instruksi program adalah...', o: ['CPU', 'Power Supply', 'Heatsink', 'Monitor'], a: 0 },
+      { q: 'Dalam spreadsheet, rumus untuk menjumlahkan angka di cell A1 sampai A5 adalah...', o: ['=COUNT(A1:A5)', '=SUM(A1:A5)', '=TOTAL(A1:A5)', '=ADD(A1:A5)'], a: 1 },
+      { q: 'Memori komputer yang bersifat sementara dan hilang saat mati lampu adalah...', o: ['Hard Disk', 'ROM', 'RAM', 'SSD'], a: 2 },
+      { q: 'Menyembunyikan detail rumit dan hanya menampilkan informasi penting disebut...', o: ['Abstraksi', 'Dekomposisi', 'Enkripsi', 'Pseudocode'], a: 0 },
+      { q: 'Struktur kontrol perulangan yang diulang berdasarkan kondisi boolean adalah...', o: ['while', 'switch', 'break', 'import'], a: 0 }
+    ]
+  },
+  {
+    j: 'Quiz Koding & Kecerdasan Artifisial (KKA) Kelas X', k: 'X',
+    soal: [
+      { q: 'Apa keunggulan utama Machine Learning dibanding pemrograman biasa?', o: ['Mampu belajar mandiri dari pola data', 'Tidak memerlukan perangkat keras', 'Hanya bisa dipakai di server superkomputer', 'Tidak memakai matematika'], a: 0 },
+      { q: 'Contoh nyata penerapan AI dalam aplikasi smartphone adalah...', o: ['Asisten suara Siri & Google Assistant', 'Lampu senter LED', 'Tombol volume fisik', 'Kabel charger USB'], a: 0 },
+      { q: 'Cabang ilmu AI yang mempelajari pemahaman teks dan bahasa manusia adalah...', o: ['NLP (Natural Language Processing)', 'Computer Vision', 'Robotics', 'Cryptography'], a: 0 },
+      { q: 'Jika AI dilatih menggunakan data yang sudah diberi label jawaban, ini disebut...', o: ['Supervised Learning', 'Unsupervised Learning', 'Reinforcement Learning', 'Zero-shot Learning'], a: 0 },
+      { q: 'Teknik merancang perintah teks yang efektif untuk AI Generatif disebut...', o: ['Prompt Engineering', 'Software Engineering', 'Reverse Engineering', 'Social Engineering'], a: 0 },
+      { q: 'Di Google Teachable Machine, kita bisa melatih model AI untuk klasifikasi...', o: ['Gambar, Audio, dan Pose', 'Dokumen PDF saja', 'Format video AVI saja', 'Suhu ruangan'], a: 0 },
+      { q: 'Apa yang dimaksud dengan Bias pada model AI?', o: ['Kecenderungan diskriminatif akibat data latih yang tidak seimbang', 'Kecepatan pemrosesan yang lambat', 'Kamera yang buram', 'Baterai yang boros'], a: 0 },
+      { q: 'Model kecerdasan buatan yang terinspirasi dari jaringan saraf otak manusia adalah...', o: ['Artificial Neural Network (ANN)', 'Binary Search Tree', 'Relational Database', 'Stack and Queue'], a: 0 }
+    ]
+  },
+  {
+    j: 'Quiz Koding Pemrograman Blok Kelas VIII (SMP)', k: 'VIII',
+    soal: [
+      { q: 'Urutan instruksi langkah demi langkah yang logis untuk menyelesaikan masalah disebut...', o: ['Algoritma', 'Sprite', 'Variabel', 'Animasi'], a: 0 },
+      { q: 'Di aplikasi Scratch, karakter yang dapat digerakkan dan diberi instruksi disebut...', o: ['Sprite', 'Backdrop', 'Costume', 'Stage'], a: 0 },
+      { q: 'Blok untuk menjalankan kode saat tombol keyboard spasi ditekan termasuk kelompok...', o: ['Events', 'Motion', 'Looks', 'Sound'], a: 0 },
+      { q: 'Jika nilai ujian >= 75 maka "Lulus", selain itu "Remedial". Ini contoh dari...', o: ['Percabangan kondisi', 'Perulangan selamanya', 'Pengacakan variabel', 'Dekomposisi'], a: 0 },
+      { q: 'Wadah dalam pemrograman yang digunakan untuk menyimpan nilai skor adalah...', o: ['Variabel', 'Operator', 'Komentar', 'Fungsi'], a: 0 }
+    ]
+  },
+  {
+    j: 'Quiz Web & Jaringan Komputer Kelas XII', k: 'XII',
+    soal: [
+      { q: 'Tag HTML yang digunakan untuk menampilkan gambar adalah...', o: ['<img>', '<pic>', '<image>', '<src>'], a: 0 },
+      { q: 'Protokol transfer data di web yang dilengkapi enkripsi keamanan adalah...', o: ['HTTPS', 'HTTP', 'FTP', 'Telnet'], a: 0 },
+      { q: 'Dalam basis data relasional, kolom yang nilainya unik pada tiap baris tabel disebut...', o: ['Primary Key', 'Foreign Key', 'Index Key', 'Composite Key'], a: 0 },
+      { q: 'Perintah SQL untuk mengambil seluruh data dari tabel "materi" adalah...', o: ['SELECT * FROM materi;', 'GET * FROM materi;', 'SHOW materi;', 'FETCH ALL materi;'], a: 0 },
+      { q: 'Perangkat jaringan yang berfungsi menghubungkan beberapa jaringan berbeda dan memilih rute paket data terbaik adalah...', o: ['Router', 'Hub', 'Kabel UTP', 'Repeater'], a: 0 }
+    ]
+  }
+];
+
+const matchesKelas=(qk,my)=>{
+  if(!my||!qk||qk==='Semua'||qk==='ALL') return true;
+  const c=String(qk).replace(/\s/g,'').toUpperCase(), m=String(my).replace(/\s/g,'').toUpperCase();
+  return c===m || m.startsWith(c+'-');
+};
+async function load(){
+  app.innerHTML='<h2 class="f">Memuat quiz…</h2>';
+  try{
+    if(window.colabDb && window.colabDb.isReady()){
+      const c=await window.colabDb.catalog.pull();
+      QUIZZES=(c.quiz||[]).filter(q=>Array.isArray(q.soal)&&q.soal.length&&matchesKelas(q.k,kelas));
+    } else {
+      const r=await fetch('/api/drive/materials?catalog=1',{cache:'no-store'});
+      if(r.ok && (r.headers.get('content-type')||'').includes('json')){
+        const c=await r.json();
+        QUIZZES=(c.quiz||[]).filter(q=>Array.isArray(q.soal)&&q.soal.length&&matchesKelas(q.k,kelas));
+      }
+    }
+  }catch(_){}
+  if(!QUIZZES || !QUIZZES.length){
+    try {
+      const local = rd('pb.guru.quiz') || [];
+      const filtered = local.filter(q=>Array.isArray(q.soal)&&q.soal.length&&matchesKelas(q.k,kelas));
+      if(filtered.length) QUIZZES = filtered;
+      else if(local.length) QUIZZES = local;
+    } catch(_){}
+  }
+  if(!QUIZZES || !QUIZZES.length){
+    QUIZZES = BUILTIN_QUIZZES.filter(q=>matchesKelas(q.k,kelas));
+    if(!QUIZZES.length) QUIZZES = BUILTIN_QUIZZES;
+  }
+  if(new URLSearchParams(location.search).get('kelola')==='1') return manage();
+  home();
+}
+const AVAS=['🦊','🐼','🐸','🦄','🐯','🐙','🤖','👾','🐲','🦁','🐧','🐵'];
+const xp=()=>+(rd('pb.game.xp')||0), addXp=n=>localStorage.setItem('pb.game.xp',xp()+n);
+/* ── Statistik jawaban & sinkronisasi progres ke server (untuk halaman Progres Siswa guru) ── */
+const ans=()=>+(rd('pb.game.answered')||0), cor=()=>+(rd('pb.game.correct')||0);
+const bumpAns=ok=>{localStorage.setItem('pb.game.answered',ans()+1);if(ok)localStorage.setItem('pb.game.correct',cor()+1)};
+async function syncProgress(mode,points){
+  const diff={};['gold','balon','tikus','roket','cocok','candy','fish','cyber','petualangan'].forEach(k=>diff[k]=DL(k));
+  const entry={userId:localStorage.getItem('pb.murid.nis')||nama+'|'+kelas,nama,kelas,xp:xp(),level:level(),diff,answered:ans(),correct:cor(),mode,points,quiz:quiz?.j||'',at:new Date().toISOString()};
+  localStorage.setItem('pb.game.pending',JSON.stringify(entry));
+  try{
+    if(window.colabDb && window.colabDb.isReady()){
+      await window.colabDb.submissions.submit('lkpd','game-progress',entry);
+    } else {
+      const r=await fetch('/api/drive/materials?submit=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jenis:'lkpd',itemKey:'game-progress',entry})});
+      if(!r.ok)throw new Error('Gagal mengirim');
+    }
+    localStorage.removeItem('pb.game.pending');pop('✓ Hasil game terkirim ke guru/admin');
+  }catch(_){pop('Hasil belum terkirim. Coba kirim ulang.');const retry=document.createElement('button');retry.className='btn';retry.textContent='Kirim ulang hasil';retry.onclick=()=>{retry.remove();syncProgress(mode,points)};app.appendChild(retry);}
+}
+const level=()=>Math.floor(Math.sqrt(xp()/50))+1;
+const ava=()=>rd('pb.game.ava')||'🦊';
+function home(){
+  app.innerHTML=`<div class="top"><div><h1 class="f" style="margin:0">🎮 Arena Game Quiz</h1><div>Halo <b>${esc(nama)}</b>${kelas?' · Kelas '+esc(kelas):''} — ayo main sambil belajar!</div></div>
+  <button class="btn ghost" onclick="history.length>1?history.back():location.href='/dashboard-murid.html'">← Kembali</button></div>
+  <div class="card" style="margin:18px 0"><div class="lvl"><span class="float" style="font-size:52px">${ava()}</span><div style="flex:1"><b class="f" style="font-size:20px">Level ${level()}</b> · ${xp()} XP<div class="bar" style="margin-top:6px"><div style="width:${Math.min(100,(xp()-50*(level()-1)**2)/(50*level()**2-50*(level()-1)**2)*100)}%"></div></div></div>
+  <button class="btn ghost" onclick="MUTE=!MUTE;localStorage.setItem('pb.game.mute',MUTE?1:0);home()">${MUTE?'🔇':'🔊'}</button></div>
+  <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap">${AVAS.map(a=>`<span class="ava ${a===ava()?'on':''}" onclick="localStorage.setItem('pb.game.ava',JSON.stringify('${a}'));beep(880);home()">${a}</span>`).join('')}</div></div>
+  <div class="card" style="margin:18px 0"><h3 class="f" style="margin-top:0">1. Pilih paket soal</h3>
+  ${QUIZZES.length?`<select id="qs">${QUIZZES.map((q,i)=>`<option value="${i}">${esc(q.j)} (${q.soal.length} soal)</option>`).join('')}</select>`:'<p>Belum ada quiz dari guru untuk kelasmu. Minta Pak/Bu guru mengirim quiz dulu ya 🙂</p>'}</div>
+  <h3 class="f">2. Pilih mode permainan (${9} Arena Seru!)</h3>
+  <div class="grid">
+   <div class="card mode" data-m="gold"><span class="mode-tag">Harta Karun</span><div class="ic">💰</div><h3 class="f">Gold Rush</h3><p>Jawab benar → buka peti harta! Rebut emas, combo beruntun, atau jackpot.</p></div>
+   <div class="card mode" data-m="balon"><span class="mode-tag">Refleks Cepat</span><div class="ic">🎈</div><h3 class="f">Balon Pecah</h3><p>Pecahkan balon jawaban yang benar di langit cerah sebelum terbang. 60 detik!</p></div>
+   <div class="card mode" data-m="tikus"><span class="mode-tag">Tantangan Lapangan</span><div class="ic">🔨</div><h3 class="f">Pukul Tikus</h3><p>Pukul tikus yang membawa jawaban benar di padang rumput sebelum sembunyi!</p></div>
+   <div class="card mode" data-m="roket"><span class="mode-tag">Balap Luar Angkasa</span><div class="ic">🚀</div><h3 class="f">Balap Roket</h3><p>Balapan roket turbo melawan 3 robot pintar! Tiap jawaban benar roket melesat.</p></div>
+   <div class="card mode" data-m="cocok"><span class="mode-tag">Asah Otak</span><div class="ic">🧩</div><h3 class="f">Kartu Cocok</h3><p>Pasangkan kartu soal dengan jawabannya secepat mungkin sebelum waktu habis.</p></div>
+   <div class="card mode" data-m="candy"><span class="mode-tag">Strategi &amp; Curi</span><div class="ic">🍬</div><h3 class="f">Candy Quest</h3><p>Kumpulkan permen manis, curi stok robot, atau tukar tas permen misterius!</p></div>
+   <div class="card mode" data-m="fish"><span class="mode-tag">Tangkap Ikan</span><div class="ic">🦈</div><h3 class="f">Fishing Frenzy</h3><p>Lempar kail ke laut biru! Tangkap ikan raksasa &amp; hindari gurita pencuri.</p></div>
+   <div class="card mode" data-m="cyber"><span class="mode-tag">Misi Hacker Baik</span><div class="ic">💻</div><h3 class="f">Cyber Hack</h3><p>Bobol firewall aman &amp; kumpulkan crypto. Awas virus jika salah menebak!</p></div>
+   <div class="card mode" data-m="petualangan" style="border-color:#ffcb0566;background:linear-gradient(145deg,#134e4a,#2d1b69)"><span class="mode-tag">⭐ Baru · Adventure</span><div class="ic">🗺️</div><h3 class="f">Petualangan Bonus</h3><p>Jelajahi peta! Setiap mengambil peti bonus atau energi, jawab pertanyaan rahasia dulu.</p></div>
+  </div>
+  <div class="card" style="margin-top:18px"><h3 class="f" style="margin-top:0">🏆 Papan Rekor Terbaik Kamu</h3><ul class="lb" style="list-style:none;padding:0;margin:0">${(rd('pb.game.scores')||[]).slice(0,6).map((s,idx)=>`<li><span>${['🥇','🥈','🥉'][idx]||'⭐'} <b>${esc(s.mode)}</b> · ${esc(s.quiz)}</span><b>${s.skor} poin</b></li>`).join('')||'<li>Belum ada rekor. Ayo mulai petualangan atau pilih arena favoritmu!</li>'}</ul></div>`;
+  app.querySelectorAll('.mode').forEach(m=>m.onclick=()=>{if(!QUIZZES.length)return alert('Belum ada quiz.');quiz=QUIZZES[+$('#qs').value];GAMES[m.dataset.m]()});
+  app.querySelectorAll('.mode').forEach(m=>m.insertAdjacentHTML('beforeend',`<div style="font-size:12px;opacity:.8">Level ${DL(m.dataset.m)}/10 ${stars(m.dataset.m)}</div>`));
+}
+function save(mode,skor){const l=rd('pb.game.scores')||[];l.push({mode,skor,quiz:quiz.j,ts:Date.now()});l.sort((a,b)=>b.skor-a.skor);localStorage.setItem('pb.game.scores',JSON.stringify(l.slice(0,20)))}
+function finish(mode,skor,detail,key,acc){const prevBest=Math.max(0,...(rd('pb.game.scores')||[]).filter(s=>s.mode===mode).map(s=>+s.skor||0));const isNewRec=skor>prevBest&&skor>0;if(key&&acc!=null){const lv=DL(key);if(acc>=.8&&lv<10){setDL(key,lv+1);setTimeout(()=>pop('⚡ Level game naik → '+(lv+1)+'! Makin sulit!'),900)}else if(acc<.4&&lv>1)setDL(key,lv-1)}const gain=Math.max(5,Math.round(skor/4));const lv0=level();addXp(gain);if(level()>lv0)setTimeout(()=>pop('⬆️ LEVEL '+level()+'!'),600);confetti(130);beep(523);setTimeout(()=>beep(659),150);setTimeout(()=>beep(784),300);setTimeout(()=>beep(1046),450);save(mode,skor);syncProgress(mode,skor);
+  const rank=(acc==null||acc>=.85)?'🥇 Peringkat S':acc>=.65?'🥈 Peringkat A':'🥉 Peringkat B';
+  app.innerHTML=`<div class="card" style="text-align:center;margin-top:32px;border-color:#ffcb0566"><div style="font-size:78px">${isNewRec?'👑':'🏆'}</div><span class="chip" style="background:#ffcb0533;color:#ffcb05;margin-bottom:8px">${rank}${isNewRec?' · 🎉 REKOR BARU!':''}</span><h1 class="f" style="margin:6px 0">Hebat, ${esc(nama)}!</h1><div style="font-size:58px;margin:8px 0" class="float">${ava()}</div><h2 class="f" style="color:var(--y)">${skor} poin · +${gain} XP</h2><p>${detail}</p>${key?`<p>Level kesulitan ${esc(mode)} sekarang: <b>${DL(key)}/10</b> ${stars(key)}</p>`:''}
+  <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px"><button class="btn" onclick="GAMES['${key||'gold'}']()">🔄 Main lagi</button><button class="btn ghost" onclick="home()">Ganti mode</button></div></div>`}
+
+/* ── Mesin game hadiah ala Blooket (Gold Rush, Candy Quest, Fishing Frenzy, Cyber Hack) ── */
+function reward(cfg){
+  const key=cfg.key,lv=DL(key),soal=evolve(quiz.soal,lv);let i=0,v=0,streak=0,benar=0;
+  const hud=()=>`<div class="hud ${streak>=3?'fever':''}" style="background:${cfg.bg||''}"><span class="chip">${cfg.icon} ${v}</span><span class="chip">${streak>=3?'🔥 FEVER ': '🔥 '}${streak}</span><span class="chip">⏱️ <span id="qt"></span>s</span><span class="chip">Lv ${lv}</span><span class="chip">${Math.min(i+1,soal.length)}/${soal.length}</span><button class="btn ghost" style="margin-left:auto;padding:8px 12px" onclick="clearInterval(window._qt);home()">Keluar</button></div>`;
+  function wrong(msg){bad();streak=0;const lost=Math.min(v,Math.round(v*(0.1+lv*0.03))+lv*2);v-=lost;pop((msg||'Salah!')+' -'+lost+' '+cfg.icon,'#ff5ca8');setTimeout(()=>{i++;ask()},1200)}
+  function ask(){clearInterval(window._qt);if(i>=soal.length)return finish(cfg.name,v,`${benar} dari ${soal.length} benar · ${cfg.icon} ${v}`,key,benar/soal.length);
+    const s=soal[i],ord=shuffle(s.o.map((t,k)=>({t,k})));
+    app.innerHTML=hud()+`<div class="q">${esc(s.q)}</div><div class="opts">${ord.map((o,idx)=>`<button class="opt" data-k="${o.k}"><span style="opacity:.65;margin-right:8px">${'ABCD'[idx]}.</span>${esc(o.t)}</button>`).join('')}</div>`;
+    const lock=()=>app.querySelectorAll('.opt').forEach(x=>{x.disabled=true;x.classList.add(+x.dataset.k===s.a?'ok':'no')});
+    window._qt=startQT(lv,()=>{lock();wrong('Waktu habis!')});
+    app.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{clearInterval(window._qt);lock();
+      if(+b.dataset.k===s.a){good();bumpAns(1);benar++;streak++;pop(streak>=3?'🔥 FEVER '+streak+'x!':'✨ Benar!');setTimeout(pick,650)}else{bumpAns(0);wrong()}});
+  }
+  function pick(){const opts=shuffle(cfg.prizes(lv,streak,v)).slice(0,3);
+    app.innerHTML=hud()+`<h2 class="f" style="text-align:center">${cfg.pickTitle}</h2><p style="text-align:center;opacity:.85;margin-top:-6px">Pilih 1 dari 3 kotak — kotak lain akan ikut terbuka sesudahnya!</p><div class="chests">${opts.map((p,k)=>`<div class="chest" data-k="${k}"><div>${cfg.box}</div><div class="chest-lbl">Pilih #${k+1}</div></div>`).join('')}</div>`;
+    app.querySelectorAll('.chest').forEach(c=>c.onclick=()=>{app.querySelectorAll('.chest').forEach(x=>x.onclick=null);const picked=+c.dataset.k;const p=opts[picked];const before=v;v=Math.max(0,Math.round(p.f(v)));
+      app.querySelectorAll('.chest').forEach((x,k)=>{
+        const op=opts[k]; x.classList.add(k===picked?'picked':'missed');
+        x.innerHTML=`<div>${op.e||cfg.icon}</div><div class="chest-lbl">${esc(op.t)}</div>`;
+      });
+      pop(p.t,v<before?'#ff5ca8':undefined);v<before?bad():good();if(p.big)confetti(70);setTimeout(()=>{i++;ask()},1350)});
+  }
+  ask();
+}
+const risk=lv=>lv>=4?[{t:'💀 Dirampok! -'+(10+lv*3)+'%',e:'💀',f:x=>x*(1-(10+lv*3)/100)}]:[];
+const gold=()=>reward({key:'gold',name:'Gold Rush',icon:'💰',box:'🎁',pickTitle:'Pilih peti harta!',prizes:(lv,st)=>[{t:'+'+(10+st*5)+' emas',f:e=>e+10+st*5},{t:'Emas x2!',f:e=>Math.max(e*2,20),big:1},{t:'+25 emas',f:e=>e+25},{t:'JACKPOT +100',f:e=>e+100,big:1},{t:'+5 emas',f:e=>e+5},...risk(lv)]});
+const candy=()=>reward({key:'candy',name:'Candy Quest',icon:'🍬',box:'🎃',bg:'#7c3aed',pickTitle:'Pilih kantong permen!',prizes:(lv,st)=>[{t:'+'+(15+st*5)+' permen',e:'🍭',f:e=>e+15+st*5},{t:'Curi 30 permen dari robot! 🤖',e:'🦹',f:e=>e+30,big:1},{t:'Permen x1.5!',e:'🍫',f:e=>Math.max(e*1.5,20)},{t:'+10 permen',e:'🍬',f:e=>e+10},{t:'Tukar tas dengan robot (50)',e:'🔁',f:()=>50},...(lv>=3?[{t:'👻 Hantu makan permenmu -25',e:'👻',f:e=>e-25}]:[]),...risk(lv)]});
+const fish=()=>reward({key:'fish',name:'Fishing Frenzy',icon:'🐟',box:'🎣',bg:'#0369a1',pickTitle:'Lempar kail! Pilih satu titik',prizes:(lv,st)=>[{t:'Ikan kecil +'+(5+lv)+' lbs',e:'🐠',f:e=>e+5+lv},{t:'Ikan besar +'+(20+st*4)+' lbs',e:'🐟',f:e=>e+20+st*4},{t:'🦈 HIU! +80 lbs',e:'🦈',f:e=>e+80,big:1},{t:'Frenzy! lbs x2',e:'🌊',f:e=>Math.max(e*2,20),big:1},{t:'🥾 Sepatu bot +1',e:'🥾',f:e=>e+1},...(lv>=3?[{t:'🐙 Gurita curi -20 lbs',e:'🐙',f:e=>e-20}]:[]),...risk(lv)]});
+const cyber=()=>reward({key:'cyber',name:'Cyber Hack',icon:'🪙',box:'🖥️',bg:'#065f46',pickTitle:'Pilih server untuk diretas',prizes:(lv,st)=>[{t:'+'+(20+st*5)+' crypto',e:'💾',f:e=>e+20+st*5},{t:'Hack berhasil! crypto x2',e:'🔓',f:e=>Math.max(e*2,25),big:1},{t:'Bitcoin langka +120',e:'₿',f:e=>e+120,big:1},{t:'+10 crypto',e:'📟',f:e=>e+10},...(lv>=2?[{t:'🦠 Virus! -30%',e:'🦠',f:e=>e*.7}]:[]),...risk(lv)]});
+
+/* ── Balon Pecah (ala Wordwall) ── */
+function balon(){
+  const lv=DL('balon'),soal=evolve(quiz.soal,lv); let i=0,skor=0,waktu=60,timer,spawn,benar=0,salah=0,streak=0;
+  function render(){ if(i>=soal.length) i=0; const s=soal[i];
+    app.innerHTML=`<div class="hud ${streak>=3?'fever':''}"><span class="chip">⭐ ${skor}</span><span class="chip">⏱️ <span id="tm">${waktu}</span>s</span><span class="chip">🔥 ${streak}</span><span class="chip">Lv ${lv}</span><button class="btn ghost" style="margin-left:auto;padding:8px 12px" onclick="stopB();home()">Keluar</button></div>
+    <div class="q" style="padding:16px">${esc(s.q)}</div><div class="arena" id="ar"></div>`;
+    clearInterval(spawn); const colors=['#e11d48','#2563eb','#d97706','#16a34a','#9333ea'];
+    const fire=()=>{const ar=$('#ar');if(!ar)return; s.o.forEach((t,k)=>{const b=document.createElement('div');b.className='balloon';b.textContent=t;
+      b.style.left=(5+Math.random()*70)+'%';b.style.background=colors[k%5];b.style.animationDuration=Math.max(1.8,(5.5-lv*.4)+Math.random()*2)+'s';b.style.animationDelay=(Math.random()*1.5)+'s';
+      b.onclick=()=>{ if(k===s.a){good();bumpAns(1);skor+=10+lv;benar++;streak++;pop(streak>=3?'🔥 FEVER +'+(10+lv):'🎈 POP! +'+(10+lv));i++;render()}else{bad();bumpAns(0);salah++;streak=0;const m=Math.min(skor,4+lv*2);skor-=m;const hud=app.querySelector('.chip');if(hud)hud.textContent='⭐ '+skor;b.remove();pop('-'+m,'#ff5ca8')} };
+      b.onanimationend=()=>b.remove(); ar.appendChild(b)})};
+    fire(); spawn=setInterval(fire,Math.max(1500,4200-lv*300));
+  }
+  window.stopB=()=>{clearInterval(timer);clearInterval(spawn)};
+  timer=setInterval(()=>{waktu--;const t=$('#tm');if(t)t.textContent=waktu;if(waktu<=0){stopB();finish('Balon Pecah',skor,`${benar} balon benar, ${salah} salah · Level ${lv}`,'balon',benar/Math.max(1,benar+salah))}},1000);
+  render();
+}
+
+/* ── Kartu Cocok (ala Wordwall Match Up) ── */
+function cocok(){
+  const lv=DL('cocok'),N=Math.min(8,4+Math.floor(lv/2)),pool=shuffle(quiz.soal); let ronde=0,skor=0,t0=Date.now(),salah=0,ok=0,streak=0,timer,nextRound,ended=false;
+  const total=Math.min(2+Math.floor(lv/3),Math.ceil(pool.length/N)),limit=Math.max(40,150-lv*10);
+  const pairs=Math.min(pool.length,total*N);
+  window.stopC=()=>{ended=true;clearInterval(timer);clearTimeout(nextRound)};
+  function end(){if(ended)return;stopC();const dt=Math.round((Date.now()-t0)/1000);finish('Kartu Cocok',skor,`${ok} pasangan, ${salah} salah · ${dt} detik (batas ${limit}s)`,'cocok',ok/Math.max(1,pairs+salah))}
+  function round(){if(ended)return; const set=pool.slice(ronde*N,ronde*N+N); const dt=Math.round((Date.now()-t0)/1000); if(!set.length||ronde>=total||dt>=limit){return end()}
+    const L=shuffle(set.map((s,k)=>({k,t:s.q}))),R=shuffle(set.map((s,k)=>({k,t:s.o[s.a]}))); let sel=null,left=set.length;
+    app.innerHTML=`<div class="hud ${streak>=3?'fever':''}"><span class="chip">⭐ ${skor}</span><span class="chip">Ronde ${ronde+1}/${total}</span><span class="chip">🔥 <span id="ckSt">${streak}</span></span><span class="chip">Lv ${lv} · ⏱️ <span id="tm">${Math.max(0,limit-dt)}</span>s</span><button class="btn ghost" style="margin-left:auto;padding:8px 12px" onclick="stopC();home()">Keluar</button></div>
+    <p class="f" style="text-align:center;font-size:18px">Klik kartu soal, lalu pasangkan dengan jawabannya 👉</p>
+    <div class="pairs"><div style="display:grid;gap:10px">${L.map(x=>`<div class="tile" data-s="L" data-k="${x.k}">${esc(x.t)}</div>`).join('')}</div>
+    <div style="display:grid;gap:10px">${R.map(x=>`<div class="tile" data-s="R" data-k="${x.k}" style="background:linear-gradient(180deg,#fef08a,#fde047)">${esc(x.t)}</div>`).join('')}</div></div>`;
+    app.querySelectorAll('.tile').forEach(t=>t.onclick=()=>{
+      if(ended||t.classList.contains('done')||left===0)return;
+      if(Date.now()-t0>=limit*1000)return end();
+      if(!sel||sel.dataset.s===t.dataset.s){app.querySelectorAll('.tile.sel').forEach(x=>x.classList.remove('sel'));sel=t;t.classList.add('sel');beep(440,.05);return}
+      if(sel.dataset.k===t.dataset.k){good();bumpAns(1);ok++;streak++;skor+=10+lv;sel.classList.add('done');t.classList.add('done');pop(streak>=3?'🔥 COMBO '+streak+'x!':'✨ Cocok!');if(--left===0){ronde++;confetti(50);nextRound=setTimeout(round,700)}}
+      else{bad();bumpAns(0);salah++;streak=0;const lost=Math.min(skor,4+lv*2);skor-=lost;pop('-'+lost,'#ff5ca8');[sel,t].forEach(x=>{x.classList.add('bad');setTimeout(()=>x.classList.remove('bad'),300)})}
+      const hud=app.querySelector('.chip');if(hud)hud.textContent='⭐ '+skor;
+      const stEl=$('#ckSt');if(stEl)stEl.textContent=streak;
+      sel.classList.remove('sel');sel=null;});
+  }
+  timer=setInterval(()=>{const remaining=Math.max(0,limit-Math.floor((Date.now()-t0)/1000));const t=$('#tm');if(t)t.textContent=remaining;if(!remaining)end()},1000);
+  round();
+}
+
+/* ── Pukul Tikus (ala Wordwall Whack-a-mole) ── */
+function tikus(){
+  const lv=DL('tikus'),soal=evolve(quiz.soal,lv);let i=0,skor=0,waktu=60,benar=0,salah=0,streak=0,tick,timer;
+  function render(){if(i>=soal.length)i=0;const s=soal[i];
+    app.innerHTML=`<div class="hud ${streak>=3?'fever':''}"><span class="chip">⭐ ${skor}</span><span class="chip">⏱️ <span id="tm">${waktu}</span>s</span><span class="chip">🔥 ${streak}</span><span class="chip">Lv ${lv}</span><button class="btn ghost" style="margin-left:auto;padding:8px 12px" onclick="stopT();home()">Keluar</button></div>
+    <div class="q" style="padding:16px">${esc(s.q)}</div><div class="holes">${Array.from({length:6},(_,h)=>`<div class="hole"><div class="mole" data-h="${h}"></div></div>`).join('')}</div>`;
+    const moles=[...app.querySelectorAll('.mole')];
+    clearInterval(tick);const up=()=>{moles.forEach(m=>m.classList.remove('up'));const spots=shuffle([0,1,2,3,4,5]).slice(0,Math.min(lv>=4?4:3,s.o.length));
+      const pick=shuffle(s.o.map((t,k)=>({t,k}))).slice(0,spots.length);if(!pick.some(p=>p.k===s.a))pick[0]={t:s.o[s.a],k:s.a};
+      spots.forEach((h,n)=>{const m=moles[h];m.textContent='🐹 '+pick[n].t;m.dataset.k=pick[n].k;m.classList.add('up')})};
+    moles.forEach(m=>m.onclick=()=>{if(!m.classList.contains('up'))return;m.classList.remove('up');
+      if(+m.dataset.k===s.a){good();bumpAns(1);skor+=10+lv;benar++;streak++;pop(streak>=3?'💥 FEVER BONK! +'+(10+lv):'💥 BONK! +'+(10+lv));i++;render()}else{bad();bumpAns(0);salah++;streak=0;const lost=Math.min(skor,4+lv*2);skor-=lost;const hud=app.querySelector('.chip');if(hud)hud.textContent='⭐ '+skor;pop('-'+lost,'#ff5ca8')}});
+    up();tick=setInterval(up,Math.max(900,2400-lv*150))}
+  window.stopT=()=>{clearInterval(tick);clearInterval(timer)};
+  timer=setInterval(()=>{waktu--;const t=$('#tm');if(t)t.textContent=waktu;if(waktu<=0){stopT();finish('Pukul Tikus',skor,`${benar} benar, ${salah} salah · Level ${lv}`,'tikus',benar/Math.max(1,benar+salah))}},1000);
+  render();
+}
+
+/* ── Balap Roket (ala Blooket Racing) ── */
+function roket(){
+  const lv=DL('roket'),soal=evolve(quiz.soal,lv),GOAL=Math.min(10,soal.length);let i=0,me=0,skor=0,bots=[0,0,0],done=false,bt,benar=0,n=0,streak=0;
+  const names=['🤖 Robo','👾 Bip','🛸 Zork'];
+  function track(){return `<div class="card" style="padding:12px">${[[ava()+' '+esc(nama)+(streak>=2?' 🔥':''),me],...names.map((n,k)=>[n,bots[k]])].map(([n,v])=>`<div class="track"><span style="position:absolute;right:12px;top:14px">🏁</span><span style="font-size:12px;font-weight:800;position:absolute;left:12px;top:4px">${n}</span><span class="rk" style="left:calc(${Math.min(v,GOAL)/GOAL*86}% )">${v>0&&n.includes(esc(nama))?'🔥':''}🚀</span></div>`).join('')}</div>`}
+  function end(win){if(done)return;done=true;clearInterval(bt);finish('Balap Roket',skor+(win?50:0),(win?'🥇 Kamu juara balapan! +50 bonus':'Robot menang kali ini — coba lagi!')+' · Level '+lv,'roket',win?benar/Math.max(1,n):.3)}
+  function ask(){if(done)return;if(me>=GOAL)return end(true);const s=soal[i%soal.length],ord=shuffle(s.o.map((t,k)=>({t,k})));
+    app.innerHTML=`<div class="hud ${streak>=3?'fever':''}"><span class="chip">⭐ ${skor}</span><span class="chip">🏁 ${me}/${GOAL}</span><span class="chip">🔥 ${streak}</span><button class="btn ghost" style="margin-left:auto;padding:8px 12px" onclick="clearInterval(window._bt);home()">Keluar</button></div>${track()}
+    <div class="q">${esc(s.q)}</div><div class="opts">${ord.map(o=>`<button class="opt" data-k="${o.k}">${esc(o.t)}</button>`).join('')}</div>`;
+    app.querySelectorAll('.opt').forEach(b=>b.onclick=()=>{app.querySelectorAll('.opt').forEach(x=>{x.disabled=true;x.classList.add(+x.dataset.k===s.a?'ok':'no')});
+      if(+b.dataset.k===s.a){n++;good();bumpAns(1);benar++;streak++;me++;skor+=10+lv;pop(streak>=3?'🚀 TURBO BOOST!':'🚀 Ngebut!')}else{n++;bad();bumpAns(0);streak=0;me=Math.max(0,me-1);const m=4+lv*2;skor=Math.max(0,skor-m);pop('Mesin mogok! Mundur 1, -'+m,'#ff5ca8')}i++;setTimeout(ask,800)})}
+  bt=setInterval(()=>{bots=bots.map(v=>v+(Math.random()<.25+lv*.05?1:0));if(bots.some(v=>v>=GOAL))end(false);else{const tr=app.querySelector('.card');if(tr&&!done)tr.outerHTML=track()}},Math.max(1300,2600-lv*120));
+  window._bt=bt;
+  ask();
+}
+
+/* ── Petualangan Bonus (Adventure Quiz Map) ── */
+function petualangan(){
+  const lv=DL('petualangan'), ROWS=5, COLS=6, soal=evolve(quiz.soal,lv);
+  let r=0, c=0, skor=0, nyawa=3, langkah=0, bonusCount=0, benar=0, terjawab=0, qi=0, modalOpen=false, ended=false;
+  const grid=Array.from({length:ROWS},()=>Array(COLS).fill('.'));
+  const path=new Set(['0,0']);
+  let cr=0, cc=0;
+  while(cr<ROWS-1 || cc<COLS-1){
+    if(cr===ROWS-1) cc++;
+    else if(cc===COLS-1) cr++;
+    else if(Math.random()<0.5) cr++; else cc++;
+    path.add(cr+','+cc);
+  }
+  grid[ROWS-1][COLS-1]='F';
+  const candidates=[];
+  for(let y=0;y<ROWS;y++) for(let x=0;x<COLS;x++){
+    if((y===0&&x===0)||(y===ROWS-1&&x===COLS-1)) continue;
+    candidates.push([y,x]);
+  }
+  const pool=shuffle(candidates);
+  const rewards={};
+  const chestPrizes=[
+    {label:'+45 Poin Harta Karun', fn:()=>skor+=45, big:true},
+    {label:'+30 Poin Permata', fn:()=>skor+=30},
+    {label:'+1 Nyawa ❤️ & +20 Poin', fn:()=>{nyawa=Math.min(5,nyawa+1);skor+=20;}},
+    {label:'Bonus x1.5 Poin! 🔥', fn:()=>{skor=Math.max(35,Math.round(skor*1.5));}, big:true},
+    {label:'Jackpot +75 Poin! 💎', fn:()=>skor+=75, big:true}
+  ];
+  let placedChests=0, placedEnergy=0, placedMonster=0, placedWalls=0;
+  const maxWalls=Math.min(6, 3+Math.floor(lv/2));
+  for(const [y,x] of pool){
+    const key=y+','+x;
+    if(placedChests<5 && Math.random()<0.45){
+      grid[y][x]='B'; rewards[key]=chestPrizes[placedChests%chestPrizes.length]; placedChests++;
+    } else if(placedEnergy<2 && Math.random()<0.25){
+      grid[y][x]='E'; placedEnergy++;
+    } else if(placedMonster<Math.min(4,2+Math.floor(lv/3)) && !path.has(key) && Math.random()<0.35){
+      grid[y][x]='M'; placedMonster++;
+    } else if(placedWalls<maxWalls && !path.has(key)){
+      grid[y][x]='W'; placedWalls++;
+    }
+  }
+  if(placedChests<3){
+    for(const [y,x] of pool){
+      if(grid[y][x]==='.'){ grid[y][x]='B'; rewards[y+','+x]=chestPrizes[placedChests%chestPrizes.length]; placedChests++; if(placedChests>=4)break; }
+    }
+  }
+  const visited=new Set(['0,0']);
+  const bioma=y=>y<=1?'🌿 Lembah Ilmu':y<=3?'🌋 Gunung Logika':'🏰 Benteng Kode';
+  function cleanAdv(){ window.removeEventListener('keydown', onKey); }
+  window.stopAdv=cleanAdv;
+
+  function renderMap(notice){
+    if(ended) return;
+    let tiles='';
+    for(let y=0;y<ROWS;y++) for(let x=0;x<COLS;x++){
+      const key=y+','+x, cell=grid[y][x], isP=(y===r&&x===c);
+      let cls='adv-tile', ico='·', sub='';
+      if(cell==='W'){ cls+=' wall'; ico='🪨'; }
+      else if(isP){ cls+=' player'; ico=ava(); sub='Kamu'; }
+      else if(cell==='B'){ cls+=' chest'; ico='💎'; sub='Bonus'; }
+      else if(cell==='E'){ cls+=' energy'; ico='⚡'; sub='Energi'; }
+      else if(cell==='M'){ cls+=' monster'; ico='👾'; sub='Bug'; }
+      else if(cell==='F'){ cls+=' finish'; ico='🏁'; sub='Finish'; }
+      else if(visited.has(key)){ cls+=' visited'; ico='👣'; }
+      tiles+=`<div class="${cls}" data-y="${y}" data-x="${x}" title="${sub||'Petak peta'}">${ico}${sub?`<span class="adv-sub">${sub}</span>`:''}</div>`;
+    }
+    app.innerHTML=`<div class="hud">
+      <span class="chip">⭐ ${skor}</span>
+      <span class="chip">❤️ ${'❤️'.repeat(Math.max(0,nyawa))||'0'}</span>
+      <span class="chip">💎 ${bonusCount} bonus</span>
+      <span class="chip">👣 ${langkah} langkah</span>
+      <span class="chip">Lv ${lv}</span>
+      <button class="btn ghost" style="margin-left:auto;padding:8px 12px" id="advQuit">Keluar</button>
+    </div>
+    <div class="adv-wrap">
+      <div>
+        <div style="margin-bottom:8px;font-size:13px;opacity:.9">📍 Zona saat ini: <b>${bioma(r)}</b> · ${notice||'Gunakan tombol arah / klik petak di sebelahmu untuk melangkah!'}</div>
+        <div class="adv-board">${tiles}</div>
+      </div>
+      <div class="card" style="padding:14px">
+        <h3 class="f" style="margin-top:0">🧭 Navigasi</h3>
+        <div class="adv-dpad">
+          <div></div><button type="button" data-d="-1,0">⬆️</button><div></div>
+          <button type="button" data-d="0,-1">⬅️</button><button type="button" data-d="1,0">⬇️</button><button type="button" data-d="0,1">➡️</button>
+        </div>
+        <div style="font-size:12.5px;line-height:1.5;opacity:.9;border-top:1px solid #ffffff1a;padding-top:10px;margin-top:6px">
+          <div>💎 <b>Peti Bonus</b>: Jawab pertanyaan untuk ambil hadiah!</div>
+          <div>⚡ <b>Energi</b>: Jawab benar = +1 ❤️ &amp; +20 poin</div>
+          <div>👾 <b>Penjaga Bug</b>: Jawab benar = usir bug (+25 poin)</div>
+          <div>🏁 <b>Finish</b>: Selesaikan tantangan Boss Akhir!</div>
+        </div>
+      </div>
+    </div>`;
+    $('#advQuit').onclick=()=>{cleanAdv();home();};
+    app.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{const [dy,dx]=b.dataset.d.split(',').map(Number);move(dy,dx);});
+    app.querySelectorAll('.adv-tile').forEach(t=>t.onclick=()=>{
+      const ty=+t.dataset.y, tx=+t.dataset.x;
+      if(Math.abs(ty-r)+Math.abs(tx-c)===1) move(ty-r, tx-c);
+    });
+  }
+
+  function askQuestionGate(title, badgeText, onWin, onFail){
+    modalOpen=true;
+    const s=soal[qi%soal.length]; qi++;
+    const ord=shuffle(s.o.map((t,k)=>({t,k})));
+    const m=document.createElement('div');
+    m.className='adv-modal';
+    m.innerHTML=`<div class="adv-mbox">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px">
+        <span class="chip" style="background:#ffcb0533;color:#ffcb05">${esc(badgeText)}</span>
+        <span style="font-size:12px;opacity:.8">Jawab benar untuk klaim!</span>
+      </div>
+      <h2 class="f" style="margin:6px 0 12px">${esc(title)}</h2>
+      <div class="q" style="margin:0 0 14px;font-size:19px">${esc(s.q)}</div>
+      <div class="opts">${ord.map(o=>`<button class="opt" data-k="${o.k}">${esc(o.t)}</button>`).join('')}</div>
+    </div>`;
+    document.body.appendChild(m);
+    m.querySelectorAll('.opt').forEach(btn=>btn.onclick=()=>{
+      m.querySelectorAll('.opt').forEach(x=>{x.disabled=true;x.classList.add(+x.dataset.k===s.a?'ok':'no');});
+      terjawab++;
+      const isOk=+btn.dataset.k===s.a;
+      bumpAns(isOk);
+      if(isOk){ good(); benar++; } else { bad(); }
+      setTimeout(()=>{
+        m.remove(); modalOpen=false;
+        if(isOk) onWin(); else onFail();
+      }, 650);
+    });
+  }
+
+  function move(dy,dx){
+    if(modalOpen||ended) return;
+    const nr=r+dy, nc=c+dx;
+    if(nr<0||nr>=ROWS||nc<0||nc>=COLS) return;
+    if(grid[nr][nc]==='W'){ beep(140,.08); renderMap('🪨 Terhalang batu! Cari jalan memutar.'); return; }
+    r=nr; c=nc; langkah++; visited.add(r+','+c); beep(480,.05);
+    const key=r+','+c, cell=grid[r][c];
+
+    if(cell==='B'){
+      const rewardItem=rewards[key]||{label:'+35 Poin Bonus', fn:()=>skor+=35};
+      renderMap('💎 Membuka peti bonus...');
+      askQuestionGate('🎁 Peti Bonus Ditemukan!', 'Hadiah: '+rewardItem.label, ()=>{
+        grid[r][c]='.'; bonusCount++; rewardItem.fn();
+        pop('🎁 '+rewardItem.label); if(rewardItem.big) confetti(60);
+        renderMap('✅ Bonus berhasil diklaim!');
+      }, ()=>{
+        pop('Peti terkunci! Coba peti lain','#ff5ca8');
+        renderMap('🔒 Jawaban salah, peti bonus terkunci.');
+      });
+      return;
+    }
+    if(cell==='E'){
+      renderMap('⚡ Mengakses portal energi...');
+      askQuestionGate('⚡ Portal Energi Terbuka!', 'Bonus: +1 ❤️ Nyawa & +20 Poin', ()=>{
+        grid[r][c]='.'; bonusCount++; nyawa=Math.min(5,nyawa+1); skor+=20;
+        pop('⚡ +1 ❤️ & +20 Poin'); renderMap('⚡ Energi terisi penuh!');
+      }, ()=>{
+        grid[r][c]='.'; pop('Portal redup!','#ff5ca8'); renderMap('⚡ Portal gagal diaktifkan.');
+      });
+      return;
+    }
+    if(cell==='M'){
+      renderMap('👾 Dihadang Penjaga Bug!');
+      askQuestionGate('👾 Tantangan Penjaga Bug!', 'Kalahkan Bug: +25 Poin (Salah = -1 ❤️)', ()=>{
+        grid[r][c]='.'; skor+=25; pop('⚔️ Bug dikalahkan! +25'); renderMap('🛡️ Bug berhasil di-debug!');
+      }, ()=>{
+        nyawa--;
+        pop('💥 Kena serang Bug! -1 ❤️','#ff5ca8');
+        if(nyawa<=0){
+          ended=true; cleanAdv();
+          return finish('Petualangan Bonus',skor,`Kehabisan nyawa di langkah ${langkah} · ${bonusCount} bonus dibuka`,'petualangan',benar/Math.max(1,terjawab));
+        }
+        renderMap('❤️ Hati-hati! Nyawamu tersisa '+nyawa);
+      });
+      return;
+    }
+    if(cell==='F'){
+      renderMap('🏁 Kamu mencapai Gerbang Kemenangan!');
+      askQuestionGate('🏰 Tantangan Boss Terakhir!', 'Menangkan Petualangan: +80 Poin!', ()=>{
+        skor+=80; ended=true; cleanAdv();
+        finish('Petualangan Bonus',skor,`Menaklukkan peta dalam ${langkah} langkah · ${bonusCount} peti bonus · ${benar}/${terjawab} pertanyaan benar`,'petualangan',benar/Math.max(1,terjawab));
+      }, ()=>{
+        const pen=Math.min(skor,10+lv*2); skor-=pen; nyawa--;
+        if(nyawa<=0){
+          ended=true; cleanAdv();
+          return finish('Petualangan Bonus',skor,`Tumbang di Gerbang Boss · ${bonusCount} bonus dibuka`,'petualangan',benar/Math.max(1,terjawab));
+        }
+        r=Math.max(0,r-1); pop('🛡️ Ditahan Boss! Mundur 1 langkah','#ff5ca8');
+        renderMap('⚠️ Jawab benar pertanyaan Boss untuk finis!');
+      });
+      return;
+    }
+    renderMap();
+  }
+
+  function onKey(e){
+    const k=e.key.toLowerCase();
+    if(k==='arrowup'||k==='w'){ e.preventDefault(); move(-1,0); }
+    else if(k==='arrowdown'||k==='s'){ e.preventDefault(); move(1,0); }
+    else if(k==='arrowleft'||k==='a'){ e.preventDefault(); move(0,-1); }
+    else if(k==='arrowright'||k==='d'){ e.preventDefault(); move(0,1); }
+  }
+  window.addEventListener('keydown', onKey);
+  renderMap('✨ Temukan 💎 Peti Bonus dan capai 🏁 Finish!');
+}
+
+const GAMES={gold,balon,cocok,tikus,roket,candy,fish,cyber,petualangan};
+/* ── Kelola Game (Admin & Guru) ── */
+async function manage(){
+  if(!['guru','admin'].includes(localStorage.getItem('userRole'))){location.replace('/dashboard-murid.html');return;}
+  const pass=localStorage.getItem('pb.guru.passphrase')||'';
+  if(!pass){location.replace('/portal-belajar.html');return;}
+  const fetchCatalog=async()=>{
+    if(window.colabDb && window.colabDb.isReady()){
+      try{ return await window.colabDb.catalog.pull(); }catch(_){}
+    }
+    try{
+      const r=await fetch('/api/drive/materials?catalog=1',{cache:'no-store'});
+      if(r.ok && (r.headers.get('content-type')||'').includes('json')) return r.json();
+    }catch(_){}
+    const localQuiz=rd('pb.guru.quiz');
+    return {quiz:Array.isArray(localQuiz)&&localQuiz.length?localQuiz:BUILTIN_QUIZZES};
+  };
+  let cat;try{
+    if(window.colabDb && window.colabDb.isReady()){
+      await window.colabDb.auth.verifyTeacherSession(pass).catch(e=>{if(e&&e.status===401){localStorage.removeItem('pb.guru.passphrase');location.replace('/portal-belajar.html');throw e;}});
+    } else {
+      const auth=await fetch('/api/drive/materials?teacher-session=1',{cache:'no-store',headers:{'x-guru-passphrase':pass}});
+      const ct=auth.headers.get('content-type')||'';
+      const isStatic=(auth.status===404 || (auth.ok && !ct.includes('json')));
+      if(!auth.ok && !isStatic){localStorage.removeItem('pb.guru.passphrase');location.replace('/portal-belajar.html');return;}
+    }
+    cat=await fetchCatalog();
+  }catch(_){return app.innerHTML='<h2>Gagal memuat katalog. Silakan muat ulang.</h2>'}
+  const KLS=['Semua','VIII-A','VIII-B','VIII-C','VIII-D','X-1','X-2','X-3','X-4','XI-2','XI-4','XII-2','XII-4'];
+  const games=(cat.quiz||[]).map((q,i)=>({q,i}));
+  app.innerHTML=`<div class="top"><h1 class="f" style="margin:0">🛠️ Kelola Game</h1><div style="display:flex;gap:8px"><a class="btn ghost" style="text-decoration:none" href="/game-quiz.html">▶ Coba main</a><a class="btn ghost" style="text-decoration:none" href="/dashboard-guru.html">← Dashboard</a></div></div>
+  <p>Admin dan guru bisa menambah paket soal game. Semua paket di sini langsung muncul di Arena Game siswa sesuai kelasnya.</p>
+  <div class="card" style="margin-bottom:16px;border-color:#ffcb05"><h3 class="f" style="margin-top:0">✨ Buat soal otomatis dengan AI</h3>
+   <textarea class="ta" id="aiT" style="min-height:90px;font-family:Nunito" placeholder="Tulis topik atau tempel ringkasan materi, mis. 'Berpikir komputasional: dekomposisi, pengenalan pola, abstraksi, algoritma'"></textarea>
+   <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><select id="aiN" style="width:auto">${[5,10,15,20,25].map(n=>`<option ${n===10?'selected':''}>${n}</option>`).join('')}</select>
+   <select id="aiL" style="width:auto"><option>mudah</option><option selected>sedang</option><option>sulit</option></select>
+   <button class="btn" id="aiGo">✨ Buat soal</button></div>
+   <div id="aiM" style="margin-top:8px;font-size:14px">Hasil AI akan masuk ke formulir di bawah — periksa dulu, lalu simpan.</div></div>
+  <div class="card"><h3 class="f" style="margin-top:0">➕ Paket game baru</h3>
+   <input class="in" id="gj" placeholder="Judul, mis. Game Algoritma Seru"/><div style="height:8px"></div>
+   <select id="gk">${KLS.map(k=>`<option>${k}</option>`).join('')}</select><div style="height:8px"></div>
+   <textarea class="ta" id="gs" placeholder="Satu soal per baris:\nPertanyaan | Opsi A | Opsi B | Opsi C | Opsi D | Jawaban (A/B/C/D)\n\nContoh:\nLangkah-langkah menyelesaikan masalah disebut? | Algoritma | Abstraksi | Pola | Data | A"></textarea>
+   <div id="gm" style="margin:8px 0;font-size:14px"></div><button class="btn" id="gSave">Simpan & kirim ke siswa</button></div>
+  <div class="card" style="margin-top:16px"><h3 class="f" style="margin-top:0">📦 Paket soal yang tersedia (${games.length})</h3>
+   ${games.map(({q,i})=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #ffffff14"><div><b>${esc(q.j)}</b><div style="font-size:13px;opacity:.8">${esc(q.k||'Semua')} · ${(q.soal||[]).length} soal${q.game?' · 🎮 paket game':''}</div></div><button class="btn ghost" style="padding:8px 12px" data-del="${i}">Hapus</button></div>`).join('')||'<p>Belum ada.</p>'}</div>`;
+  const post=async(next)=>{
+    if(window.colabDb && window.colabDb.isReady()){
+      try{
+        const saved=await window.colabDb.catalog.publish(next,pass);
+        localStorage.setItem('pb.guru.quiz',JSON.stringify((saved&&saved.quiz)||next.quiz||[]));
+        return saved;
+      }catch(e){
+        if(e&&e.status===401){localStorage.removeItem('pb.guru.passphrase');location.replace('/portal-belajar.html');return false;}
+        throw e;
+      }
+    }
+    try{
+      const r=await fetch('/api/drive/materials?catalog=1',{method:'POST',headers:{'Content-Type':'application/json','x-guru-passphrase':pass},body:JSON.stringify(next)});
+      if(r.status===401){localStorage.removeItem('pb.guru.passphrase');location.replace('/portal-belajar.html');return false;}
+      if(r.status!==404 && (r.headers.get('content-type')||'').includes('json')){
+        if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'Gagal menyimpan');
+        return r.json();
+      }
+    }catch(e){if(e&&e.message&&!e.message.includes('Failed to fetch'))throw e;}
+    localStorage.setItem('pb.guru.quiz',JSON.stringify(next.quiz||[]));
+    return next;
+  };
+  $('#aiGo').onclick=async()=>{const topik=$('#aiT').value.trim();if(topik.length<3)return $('#aiM').textContent='⚠️ Tulis topik dulu.';
+    const btn=$('#aiGo');btn.disabled=true;btn.textContent='⏳ AI sedang menyusun soal…';$('#aiM').textContent='Mohon tunggu sekitar 10–40 detik.';
+    try{const r=await fetch('/api/game/generate',{method:'POST',headers:{'Content-Type':'application/json','x-guru-passphrase':pass},body:JSON.stringify({topik,kelas:$('#gk').value,jumlah:+$('#aiN').value,tingkat:$('#aiL').value})});
+      const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Gagal membuat soal');
+      if(!$('#gj').value.trim())$('#gj').value=d.judul||'';
+      $('#gs').value=d.soal.map(s=>[s.q,...s.o.concat(['-','-','-','-']).slice(0,4),'ABCD'[s.a]].map(x=>String(x).replace(/\|/g,'/')).join(' | ')).join('\n');
+      $('#aiM').innerHTML=`✅ ${d.soal.length} soal berhasil dibuat beserta kunci jawabannya. Periksa, lalu tekan <b>Simpan & kirim ke siswa</b>.`;confetti(40);good();
+    }catch(e){$('#aiM').textContent='⚠️ '+e.message}finally{btn.disabled=false;btn.textContent='✨ Buat soal'}};
+  $('#gSave').onclick=async()=>{const j=$('#gj').value.trim(),errs=[],soal=[];
+    $('#gs').value.split('\n').map(l=>l.trim()).filter(Boolean).forEach((l,n)=>{const p=l.split('|').map(x=>x.trim());const ans='ABCD'.indexOf((p[5]||'').toUpperCase());
+      if(p.length<6||p.slice(0,5).some(x=>!x)||ans<0)errs.push('Baris '+(n+1)+' formatnya belum benar');else soal.push({q:p[0],o:p.slice(1,5),a:ans})});
+    if(!j)errs.unshift('Judul wajib diisi');if(soal.length<3)errs.push('Minimal 3 soal');
+    if(errs.length)return $('#gm').innerHTML='⚠️ '+errs.map(esc).join('<br>⚠️ ');
+    $('#gSave').disabled=true;$('#gSave').textContent='Menyimpan…';
+    try{const fresh=await fetchCatalog();const id=crypto.randomUUID();fresh.quiz=[...(fresh.quiz||[]),{id,j,k:$('#gk').value,soal,game:true,dibuat:new Date().toISOString()}];
+      const saved=await post(fresh);
+      if(saved){
+        if(!(saved.quiz||[]).some(q=>q.id===id))throw new Error('Penyimpanan soal belum terkonfirmasi. Coba lagi.');
+        $('#gm').textContent='✓ Soal tersimpan permanen dan terkirim ke siswa.';
+        confetti(60);good();setTimeout(manage,1200);
+      }}catch(e){$('#gm').textContent='⚠️ '+e.message;$('#gSave').disabled=false;$('#gSave').textContent='Simpan & kirim ke siswa'}};
+  app.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(!confirm('Hapus paket ini?'))return;
+    try{const fresh=await fetchCatalog();const target=cat.quiz[+b.dataset.del];
+      const index=(fresh.quiz||[]).findIndex(q=>target.id?q.id===target.id:JSON.stringify(q)===JSON.stringify(target));
+      if(index<0)throw new Error('Paket telah berubah. Muat ulang sebelum menghapus.');
+      fresh.quiz.splice(index,1);if(await post(fresh))manage()}catch(e){alert(e.message)}});
+}
+load();
+</script></body></html>

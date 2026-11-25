@@ -1,0 +1,8 @@
+- [x] Perbaiki tampilan pengurangan poin, kenaikan level, dan batas waktu tiga game.
+- [x] Tolak akun siswa pada akses guru dan uji pembatasannya.
+- [x] Pastikan soal game disimpan bersama secara permanen dan uji pembacaan ulang.
+- [x] Mainkan paket contoh sampai level 3 dan jalankan pengujian aturan.
+- [x] Sistem pemantauan login siswa: kartu statistik + daftar login terbaru di dashboard guru (data dari `terakhirMasuk` akun).
+- [x] Perbaiki identitas pengumpulan, nilai quiz, pengiriman game, dan rekap admin per kelas beserta ekspor.
+- [x] Siswa kelas X/XI/XII tidak bisa masuk quiz: katalog hanya punya quiz VIII-A–D. Dibuat 3 paket soal AI baru (25 soal per jenjang) dan disalin ke X-1–4, XI-2, XI-4, XII-2, XII-4 — teruji siswa X-1 bisa membuka dan memainkan.
+- [x] Migrasi Backend ke Google Colab SQLite + Google Drive: FastAPI backend `colab/colab_server.py`, notebook siap pakai `colab/portalbelajar_colab_database.ipynb`, client library `public/colab-client.js` (termasuk `?colab=` auto-connect), auto-migrator `public/migrate.js`, halaman auth `public/auth.html`, dan integrasi sinkronisasi di `public/feature-panels.js`.

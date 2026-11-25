@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Masuk & Daftar — Portal Belajar SMA NU Kaplongan</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --p: #4f46e5;
+      --p-hover: #4338ca;
+      --p-light: #eef2ff;
+      --bg: #f8fafc;
+      --surf: #ffffff;
+      --bd: #e2e8f0;
+      --tx: #0f172a;
+      --tx-sec: #64748b;
+      --err: #ef4444;
+      --err-bg: #fee2e2;
+      --ok: #10b981;
+      --ok-bg: #dcfce7;
+    }
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--tx);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .auth-container {
+      width: 100%;
+      max-width: 460px;
+      background: var(--surf);
+      border: 1px solid var(--bd);
+      border-radius: 20px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+      overflow: hidden;
+    }
+    .auth-header {
+      padding: 28px 28px 20px;
+      text-align: center;
+      background: linear-gradient(180deg, #f1f5f9 0%, #ffffff 100%);
+      border-bottom: 1px solid var(--bd);
+    }
+    .auth-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 19px;
+      font-weight: 800;
+      color: var(--tx);
+      margin-bottom: 6px;
+    }
+    .auth-brand-badge {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: var(--p);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      font-size: 17px;
+    }
+    .auth-subtitle {
+      font-size: 13px;
+      color: var(--tx-sec);
+    }
+    .auth-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--bd);
+      background: #fafafa;
+    }
+    .auth-tab {
+      flex: 1;
+      padding: 13px;
+      text-align: center;
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--tx-sec);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all .2s;
+    }
+    .auth-tab.active {
+      color: var(--p);
+      border-color: var(--p);
+      background: var(--surf);
+    }
+    .auth-body {
+      padding: 24px 28px 28px;
+    }
+    .role-selector {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 18px;
+      background: #f1f5f9;
+      padding: 4px;
+      border-radius: 12px;
+    }
+    .role-btn {
+      flex: 1;
+      border: 0;
+      background: transparent;
+      padding: 8px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--tx-sec);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all .15s;
+    }
+    .role-btn.active {
+      background: #fff;
+      color: var(--p);
+      box-shadow: 0 2px 5px rgba(0,0,0,0.06);
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #475569;
+      margin-bottom: 6px;
+    }
+    .form-input, .form-select {
+      width: 100%;
+      padding: 10px 13px;
+      border: 1px solid var(--bd);
+      border-radius: 10px;
+      font-size: 13.5px;
+      font-family: inherit;
+      color: var(--tx);
+      background: #fff;
+      transition: border-color .15s;
+    }
+    .form-input:focus, .form-select:focus {
+      outline: none;
+      border-color: var(--p);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    }
+    .auth-btn {
+      width: 100%;
+      padding: 12px;
+      background: var(--p);
+      color: #fff;
+      border: 0;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background .15s;
+      margin-top: 6px;
+    }
+    .auth-btn:hover {
+      background: var(--p-hover);
+    }
+    .auth-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .auth-oauth-btn {
+      width: 100%;
+      padding: 11px;
+      background: #fff;
+      color: #334155;
+      border: 1px solid var(--bd);
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 14px;
+      transition: background .15s;
+    }
+    .auth-oauth-btn:hover {
+      background: #f8fafc;
+    }
+    .auth-msg {
+      padding: 10px 14px;
+      border-radius: 9px;
+      font-size: 12.5px;
+      font-weight: 500;
+      margin-bottom: 14px;
+      display: none;
+    }
+    .auth-msg.err {
+      background: var(--err-bg);
+      color: #991b1b;
+      border: 1px solid #fecaca;
+      display: block;
+    }
+    .auth-msg.ok {
+      background: var(--ok-bg);
+      color: #166534;
+      border: 1px solid #bbf7d0;
+      display: block;
+    }
+    .auth-footer {
+      text-align: center;
+      margin-top: 16px;
+      font-size: 12px;
+      color: var(--tx-sec);
+    }
+    .auth-footer a {
+      color: var(--p);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .auth-footer a:hover {
+      text-decoration: underline;
+    }
+    .config-trigger {
+      margin-top: 18px;
+      text-align: center;
+      font-size: 11.5px;
+      color: #94a3b8;
+    }
+    .config-trigger button {
+      background: none;
+      border: none;
+      color: #64748b;
+      cursor: pointer;
+      font-size: inherit;
+      text-decoration: underline;
+    }
+    .hidden { display: none !important; }
+  </style>
+  <script src="/colab-client.js"></script>
+  <script src="/migrate.js"></script>
+</head>
+<body>
+
+  <div class="auth-container">
+    <div class="auth-header">
+      <div class="auth-brand">
+        <span class="auth-brand-badge">PB</span>
+        <span>Portal Belajar</span>
+      </div>
+      <p class="auth-subtitle">Informatika & Koding Kecerdasan Artifisial</p>
+    </div>
+
+    <div class="auth-tabs">
+      <div class="auth-tab active" id="tabLogin" onclick="switchTab('login')">Masuk</div>
+      <div class="auth-tab" id="tabRegister" onclick="switchTab('register')">Daftar Akun</div>
+    </div>
+
+    <div class="auth-body">
+      <div class="role-selector">
+        <button type="button" class="role-btn active" data-role="siswa" onclick="setRole('siswa')">Siswa</button>
+        <button type="button" class="role-btn" data-role="guru" onclick="setRole('guru')">Guru</button>
+        <button type="button" class="role-btn" data-role="admin" onclick="setRole('admin')">Admin</button>
+      </div>
+
+      <div id="authMsg" class="auth-msg"></div>
+
+      <!-- FORM LOGIN -->
+      <form id="formLogin" onsubmit="handleLogin(event)">
+        <div class="form-group" id="loginIdGroup">
+          <label class="form-label" id="lblLoginId">Email atau NIS</label>
+          <input type="text" id="loginEmail" class="form-input" placeholder="nama@email.com atau NIS" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" id="loginPassword" class="form-input" placeholder="Masukkan password" required>
+        </div>
+
+        <button type="submit" id="btnSubmitLogin" class="auth-btn">Masuk ke Dashboard &rarr;</button>
+      </form>
+
+      <!-- FORM REGISTER -->
+      <form id="formRegister" class="hidden" onsubmit="handleRegister(event)">
+        <div class="form-group">
+          <label class="form-label">Nama Lengkap</label>
+          <input type="text" id="regNama" class="form-input" placeholder="Contoh: Budi Santoso" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Alamat Email</label>
+          <input type="email" id="regEmail" class="form-input" placeholder="nama@email.com" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Password (min. 6 karakter)</label>
+          <input type="password" id="regPassword" class="form-input" placeholder="Buat password akun" minlength="6" required>
+        </div>
+
+        <!-- Student specific fields -->
+        <div id="studentFields">
+          <div class="form-group">
+            <label class="form-label">Nomor Induk Siswa (NIS)</label>
+            <input type="text" id="regNis" class="form-input" placeholder="Nomor NIS terdaftar">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Pilih Kelas</label>
+            <select id="regKelas" class="form-select">
+              <optgroup label="SMP (KKA)">
+                <option value="VIII-A">VIII-A</option>
+                <option value="VIII-B">VIII-B</option>
+                <option value="VIII-C">VIII-C</option>
+                <option value="VIII-D">VIII-D</option>
+              </optgroup>
+              <optgroup label="SMA (Informatika & KKA)">
+                <option value="X-1" selected>X-1</option>
+                <option value="X-2">X-2</option>
+                <option value="X-3">X-3</option>
+                <option value="X-4">X-4</option>
+                <option value="XI-2">XI-2</option>
+                <option value="XI-4">XI-4</option>
+                <option value="XII-2">XII-2</option>
+                <option value="XII-4">XII-4</option>
+              </optgroup>
+            </select>
+          </div>
+        </div>
+
+        <button type="submit" id="btnSubmitRegister" class="auth-btn">Daftar Sekarang &rarr;</button>
+      </form>
+
+      <!-- Status Google Colab -->
+      <div id="colabStatusBar" style="margin-top:16px;padding:10px 12px;border-radius:10px;background:#f1f5f9;font-size:12px;color:#475569;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <span id="colabStatusTxt">Database Google Colab: belum dihubungkan</span>
+        <button type="button" onclick="promptColabConfig()" style="background:#4f46e5;color:#fff;border:none;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">Atur URL</button>
+      </div>
+
+      <div style="margin-top:14px;padding:12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:12px;text-align:center;">
+        <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;">Akses Cepat Demo:</span>
+        <div style="display:flex;gap:8px;margin-top:8px;">
+          <button type="button" class="auth-oauth-btn" style="flex:1;margin-top:0;padding:8px;font-size:12px;justify-content:center;" onclick="quickLogin('siswa')">🎓 Masuk Siswa (X-1)</button>
+          <button type="button" class="auth-oauth-btn" style="flex:1;margin-top:0;padding:8px;font-size:12px;justify-content:center;" onclick="quickLogin('guru')">👨‍🏫 Masuk Guru</button>
+        </div>
+      </div>
+
+      <div class="auth-footer">
+        <p><a href="/portal-belajar.html">&larr; Kembali ke Beranda Portal Belajar</a></p>
+      </div>
+
+      <div class="config-trigger">
+        <button type="button" onclick="promptColabConfig()">Pengaturan Server Google Colab</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentRole = 'siswa';
+    let currentMode = 'login';
+
+    function setRole(role) {
+      currentRole = role;
+      document.querySelectorAll('.role-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.role === role);
+      });
+      const sf = document.getElementById('studentFields');
+      if (sf) sf.classList.toggle('hidden', role !== 'siswa');
+
+      const lblId = document.getElementById('lblLoginId');
+      if (lblId) {
+        lblId.textContent = role === 'siswa' ? 'Email atau NIS Siswa' : 'Email Guru / Admin';
+      }
+    }
+
+    function switchTab(mode) {
+      currentMode = mode;
+      document.getElementById('tabLogin').classList.toggle('active', mode === 'login');
+      document.getElementById('tabRegister').classList.toggle('active', mode === 'register');
+      document.getElementById('formLogin').classList.toggle('hidden', mode !== 'login');
+      document.getElementById('formRegister').classList.toggle('hidden', mode !== 'register');
+      clearMsg();
+    }
+
+    function showMsg(text, type = 'ok') {
+      const el = document.getElementById('authMsg');
+      el.className = 'auth-msg ' + type;
+      el.textContent = text;
+      el.style.display = 'block';
+    }
+
+    function clearMsg() {
+      const el = document.getElementById('authMsg');
+      el.style.display = 'none';
+      el.textContent = '';
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      clearMsg();
+      const input = document.getElementById('loginEmail').value.trim();
+      const pw = document.getElementById('loginPassword').value;
+      const btn = document.getElementById('btnSubmitLogin');
+
+      btn.disabled = true;
+      btn.textContent = 'Memeriksa kredensial…';
+
+      try {
+        if (window.colabDb && window.colabDb.isReady()) {
+          if (currentRole === 'guru') {
+            const j = await window.colabDb.auth.teacherLogin(pw);
+            if (!j || !j.ok) throw new Error((j && j.error) || 'Password guru salah.');
+            localStorage.setItem('userRole', 'guru');
+            localStorage.setItem('pb.guru.passphrase', pw);
+            sessionStorage.removeItem('pb.admin.ok');
+            showMsg('Berhasil masuk ke Google Colab! Mengarahkan…', 'ok');
+            location.href = '/dashboard-guru.html';
+          } else if (currentRole === 'admin') {
+            const j = await window.colabDb.auth.adminLogin(pw);
+            if (!j || !j.ok) throw new Error((j && j.error) || 'Password admin salah.');
+            localStorage.setItem('userRole', 'admin');
+            sessionStorage.setItem('pb.admin.ok', '1');
+            localStorage.setItem('pb.guru.passphrase', pw);
+            showMsg('Berhasil masuk sebagai Admin! Mengarahkan…', 'ok');
+            location.href = '/dashboard-guru.html';
+          } else {
+            const j = await window.colabDb.auth.studentLogin(input, pw);
+            if (!j || !j.ok) throw new Error((j && j.error) || 'NIS atau password salah.');
+            const a = j.account || {};
+            localStorage.setItem('userRole', 'siswa');
+            localStorage.removeItem('pb.guru.passphrase');
+            sessionStorage.removeItem('pb.admin.ok');
+            localStorage.setItem('pb.murid.nis', a.nis || input);
+            localStorage.setItem('pb.murid.nama', a.nama || 'Siswa');
+            localStorage.setItem('pb.murid.myClass', JSON.stringify(String(a.kelas || 'X-1').toUpperCase()));
+            showMsg('Berhasil masuk! Mengarahkan…', 'ok');
+            location.href = '/dashboard-murid.html';
+          }
+          return;
+        } else {
+          // Fallback legacy local auth via /api/drive/materials
+          if (currentRole === 'guru') {
+            const r = await fetch('/api/drive/materials?teacher-login=1', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ password: pw })
+            });
+            const ct = r.headers.get('content-type') || '';
+            if (r.status === 404 || (r.ok && !ct.includes('json'))) {
+              localStorage.setItem('userRole', 'guru');
+              localStorage.setItem('pb.guru.passphrase', pw);
+              location.href = '/dashboard-guru.html';
+              return;
+            }
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok || !j.ok) throw new Error(j.error || 'Password guru salah.');
+            localStorage.setItem('userRole', 'guru');
+            localStorage.setItem('pb.guru.passphrase', pw);
+            location.href = '/dashboard-guru.html';
+          } else if (currentRole === 'admin') {
+            const r = await fetch('/api/drive/materials?admin-login=1', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ password: pw })
+            });
+            const ct = r.headers.get('content-type') || '';
+            if (r.status === 404 || (r.ok && !ct.includes('json'))) {
+              localStorage.setItem('userRole', 'admin');
+              sessionStorage.setItem('pb.admin.ok', '1');
+              localStorage.setItem('pb.guru.passphrase', pw);
+              location.href = '/dashboard-guru.html';
+              return;
+            }
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok || !j.ok) throw new Error(j.error || 'Password admin salah.');
+            localStorage.setItem('userRole', 'admin');
+            sessionStorage.setItem('pb.admin.ok', '1');
+            localStorage.setItem('pb.guru.passphrase', pw);
+            location.href = '/dashboard-guru.html';
+          } else {
+            const r = await fetch('/api/drive/materials?login=1', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ nis: input, password: pw })
+            });
+            const ct = r.headers.get('content-type') || '';
+            if (r.status === 404 || (r.ok && !ct.includes('json'))) {
+              localStorage.setItem('userRole', 'siswa');
+              localStorage.setItem('pb.murid.nis', input);
+              localStorage.setItem('pb.murid.nama', 'Siswa ' + input);
+              if (!localStorage.getItem('pb.murid.myClass')) localStorage.setItem('pb.murid.myClass', JSON.stringify('X-1'));
+              location.href = '/dashboard-murid.html';
+              return;
+            }
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok || !j.ok) throw new Error(j.error || 'NIS atau password salah.');
+            const a = j.account || {};
+            localStorage.setItem('userRole', 'siswa');
+            localStorage.setItem('pb.murid.nis', a.nis || input);
+            localStorage.setItem('pb.murid.nama', a.nama || 'Siswa');
+            localStorage.setItem('pb.murid.myClass', JSON.stringify(a.kelas || 'X-1'));
+            location.href = '/dashboard-murid.html';
+          }
+        }
+      } catch (err) {
+        showMsg(err.message || 'Gagal masuk. Periksa kembali data Anda.', 'err');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Masuk ke Dashboard →';
+      }
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      clearMsg();
+      const nama = document.getElementById('regNama').value.trim();
+      const email = document.getElementById('regEmail').value.trim();
+      const pw = document.getElementById('regPassword').value;
+      const nis = (document.getElementById('regNis') || {}).value?.trim() || email.split('@')[0];
+      const kelas = (document.getElementById('regKelas') || {}).value || 'X-1';
+      const btn = document.getElementById('btnSubmitRegister');
+
+      if (currentRole !== 'siswa') {
+        showMsg('Akun Guru & Admin langsung masuk memakai passphrase sekolah.', 'err');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Mendaftarkan akun…';
+
+      try {
+        if (window.colabDb && window.colabDb.isReady()) {
+          const pass = localStorage.getItem('pb.guru.passphrase') || prompt('Masukkan passphrase Guru / Admin untuk mendaftarkan siswa ke Google Colab:') || '';
+          if (!pass) throw new Error('Passphrase Guru dibutuhkan untuk menambah akun siswa baru ke database Colab.');
+          await window.colabDb.accounts.mutate({ op: 'add', nis, nama, kelas, password: pw }, pass);
+          showMsg('Akun siswa berhasil disimpan ke Google Colab SQLite! Silakan masuk dengan NIS & password.', 'ok');
+          setTimeout(() => switchTab('login'), 1500);
+        } else {
+          // Simpan ke cache lokal / fallback agar tetap bisa dicoba secara offline
+          const list = JSON.parse(localStorage.getItem('pb.cached.accounts') || '[]');
+          list.push({ nis, nama, kelas, email, role: 'siswa' });
+          localStorage.setItem('pb.cached.accounts', JSON.stringify(list));
+          localStorage.setItem('userRole', 'siswa');
+          localStorage.setItem('pb.murid.nis', nis);
+          localStorage.setItem('pb.murid.nama', nama);
+          localStorage.setItem('pb.murid.myClass', JSON.stringify(kelas));
+          showMsg('Tersimpan lokal (mode offline). Menghubungkan ke Dashboard Siswa…', 'ok');
+          setTimeout(() => { location.href = '/dashboard-murid.html'; }, 1000);
+        }
+      } catch (err) {
+        showMsg(err.message || 'Gagal mendaftarkan akun.', 'err');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Daftar Sekarang →';
+      }
+    }
+
+    function updateColabBadge() {
+      const txt = document.getElementById('colabStatusTxt');
+      if (!txt || !window.colabDb) return;
+      if (window.colabDb.isReady()) {
+        txt.innerHTML = '🟢 Google Colab terhubung: <code style="font-size:11px">' + window.colabDb.getUrl() + '</code>';
+      } else {
+        txt.textContent = '🟡 Mode Lokal (Google Colab belum diatur)';
+      }
+    }
+
+    async function promptColabConfig() {
+      const current = window.colabDb ? window.colabDb.getUrl() : '';
+      const url = prompt('Masukkan URL Public Tunnel Google Colab (mis. https://xxxx.trycloudflare.com):', current || '');
+      if (url === null) return;
+      if (window.colabDb) {
+        window.colabDb.setUrl(url);
+        updateColabBadge();
+        if (url.trim()) {
+          showMsg('Menguji koneksi ke Google Colab…', 'ok');
+          try {
+            const h = await window.colabDb.testConnection(url);
+            showMsg('✅ Terhubung ke Google Colab SQLite! (' + (h.counts?.accounts || 0) + ' akun, ' + (h.counts?.submissions || 0) + ' kiriman)', 'ok');
+          } catch (err) {
+            showMsg('⚠️ URL disimpan, namun test koneksi gagal: ' + err.message, 'err');
+          }
+        } else {
+          showMsg('URL Google Colab dihapus (mode lokal).', 'ok');
+        }
+      }
+    }
+    updateColabBadge();
+
+    function quickLogin(role) {
+      if (role === 'siswa') {
+        localStorage.setItem('userRole', 'siswa');
+        localStorage.setItem('pb.murid.nis', '1001');
+        localStorage.setItem('pb.murid.nama', 'Ahmad Fauzi');
+        localStorage.setItem('pb.murid.myClass', JSON.stringify('X-1'));
+        location.href = '/dashboard-murid.html';
+      } else {
+        localStorage.setItem('userRole', 'guru');
+        localStorage.setItem('pb.guru.passphrase', 'guru-kaplongan');
+        location.href = '/dashboard-guru.html';
+      }
+    }
+  </script>
+</body>
+</html>
