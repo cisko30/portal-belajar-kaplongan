@@ -289,7 +289,120 @@
     } catch(_){}
   })();
 
+  // ── Pengelola Modul & Fungsi Fitur (Tambah/Kurangi fitur & sub-fungsi per sekolah) ──
+  const MODULE_DEFS = [
+    {id:'kelas',ico:'🏫',name:'Kelas Saya',who:'Semua'},
+    {id:'akun',ico:'👤',name:'Akun Siswa',who:'Guru'},
+    {id:'progres',ico:'📈',name:'Progres Siswa',who:'Guru'},
+    {id:'progres_saya',ico:'📈',name:'Progres Saya',who:'Siswa'},
+    {id:'materi',ico:'📚',name:'Materi Ajar',who:'Semua'},
+    {id:'tugas',ico:'📝',name:'Tugas',who:'Semua'},
+    {id:'lkpd',ico:'📋',name:'LKPD',who:'Semua'},
+    {id:'quiz',ico:'❓',name:'Quiz',who:'Semua'},
+    {id:'bank',ico:'🗃️',name:'Bank Soal',who:'Guru'},
+    {id:'absensi',ico:'✅',name:'Absensi',who:'Guru'},
+    {id:'nilai',ico:'📊',name:'Nilai',who:'Semua'},
+    {id:'laporan',ico:'📑',name:'Laporan',who:'Guru'},
+    {id:'skill',ico:'⚡',name:'Skill & Kompetensi',who:'Semua'},
+    {id:'jadwal',ico:'📅',name:'Jadwal',who:'Semua'},
+    {id:'pengumuman',ico:'📢',name:'Pengumuman',who:'Semua'},
+    {id:'ai',ico:'✨',name:'AI Assistant',who:'Semua'},
+    {id:'game',ico:'🎮',name:'Game Quiz & Petualangan',who:'Semua'}
+  ];
+  const SUB_FLAGS_DEF = [
+    {id:'materi_upload',label:'Materi: Izinkan unggah file ke Drive/Lokal'},
+    {id:'materi_filter',label:'Materi: Filter berdasarkan mata pelajaran'},
+    {id:'tugas_upload',label:'Tugas & LKPD: Lampiran file & edit instruksi'},
+    {id:'skill_practice',label:'Skill: Latihan mini interaktif (+XP) untuk siswa'},
+    {id:'skill_endorse',label:'Skill: Pemberian lencana pengakuan oleh guru'},
+    {id:'ai_custom',label:'AI Assistant: Kelola tombol prompt cepat oleh guru'}
+  ];
+  const DEFAULT_SCHEDULE = [
+    {hari:'Senin',jam:'07:30–09:00',kelas:'X-1',mapel:'Informatika',ruang:'Lab Komputer'},
+    {hari:'Senin',jam:'10:00–11:30',kelas:'X-2',mapel:'Informatika',ruang:'Lab Komputer'},
+    {hari:'Selasa',jam:'08:15–09:45',kelas:'XI-2',mapel:'KKA',ruang:'R. 104'},
+    {hari:'Rabu',jam:'07:30–09:00',kelas:'VIII-A',mapel:'KKA',ruang:'Lab Komputer'},
+    {hari:'Kamis',jam:'09:45–11:15',kelas:'XII-2',mapel:'Informatika',ruang:'Lab Komputer'},
+    {hari:'Jumat',jam:'07:30–09:00',kelas:'XI-4',mapel:'KKA',ruang:'R. 105'}
+  ];
+  const FeatureConfig = {
+    KEY:'pb.modules.config',
+    get(){
+      const local = LS.get(this.KEY, {}) || {};
+      const sharedAll = LS.get('pb.shared.absensi', {}) || {};
+      const remote = sharedAll['__CONFIG__|modules'] || {};
+      const merged = { disabled:[], subFlags:{}, customModules:[], customSkills:null, jadwal:null, aiPrompts:null, ...local, ...remote };
+      if(!Array.isArray(merged.disabled)) merged.disabled = [];
+      if(!merged.subFlags || typeof merged.subFlags!=='object') merged.subFlags = {};
+      if(!Array.isArray(merged.customModules)) merged.customModules = [];
+      return merged;
+    },
+    save(next){
+      LS.set(this.KEY, next);
+      Activity.absensi.set('__CONFIG__', 'modules', next);
+      this.applySidebarConfig();
+      emitSync();
+    },
+    isEnabled(featId){
+      if(!featId || featId==='dashboard' || featId==='pengaturan' || featId==='modul') return true;
+      return !this.get().disabled.includes(featId);
+    },
+    subEnabled(flagId){
+      const flags = this.get().subFlags || {};
+      return flags[flagId] !== false;
+    },
+    applySidebarConfig(){
+      const cfg = this.get();
+      document.querySelectorAll('.sb-nav .nav-item').forEach(el => {
+        if(el.classList.contains('fp-custom-nav')) return;
+        const href = (el.getAttribute('href') || '').toLowerCase();
+        const feat = el.dataset.feature || (href.includes('game-quiz') ? 'game' : '');
+        if(!feat || feat==='dashboard' || feat==='pengaturan' || feat==='modul') return;
+        el.style.display = cfg.disabled.includes(feat) ? 'none' : '';
+      });
+      const nav = document.querySelector('.sb-nav');
+      if(!nav) return;
+      nav.querySelectorAll('.fp-custom-nav, .fp-custom-lbl').forEach(x=>x.remove());
+      const mine = (cfg.customModules||[]).filter(m => m && (m.target==='all' || m.target===ROLE || (ROLE==='guru'&&m.target==='guru') || (ROLE==='murid'&&m.target==='murid')));
+      if(mine.length){
+        const lbl = document.createElement('div'); lbl.className='nav-lbl fp-custom-lbl'; lbl.textContent='Fitur Tambahan';
+        nav.appendChild(lbl);
+        mine.forEach(m => {
+          const item = document.createElement('div');
+          item.className = 'nav-item fp-custom-nav';
+          item.dataset.feature = 'custom:' + m.id;
+          item.style.cursor = 'pointer';
+          item.innerHTML = `<span style="width:16px;text-align:center">${esc(m.ico||'✨')}</span><span>${esc(m.title||'Fitur')}</span>`;
+          item.onclick = () => open('custom:' + m.id);
+          nav.appendChild(item);
+          FEATURES['custom:' + m.id] = {
+            ico: m.ico || '✨', title: m.title || 'Fitur Kustom', sub: m.sub || 'Modul tambahan Portal Belajar',
+            render(body){
+              const notesKey = 'pb.custom.notes.' + m.id;
+              const notes = LS.get(notesKey, []);
+              body.innerHTML = `
+                <div class="fp-card" style="margin-bottom:14px">
+                  <h4>${esc(m.ico||'✨')} ${esc(m.title)}</h4>
+                  <p style="margin-top:6px;white-space:pre-wrap">${esc(m.desc||'Belum ada deskripsi modul.')}</p>
+                  ${m.url?`<div style="margin-top:12px"><a class="fp-btn sm" href="${esc(m.url)}" target="_blank" rel="noopener">🔗 Buka Tautan / Alat</a></div>`:''}
+                </div>
+                ${m.url && /^https?:\/\//i.test(m.url) ? `<div class="fp-card" style="margin-bottom:14px;padding:8px"><iframe src="${esc(m.url)}" style="width:100%;height:340px;border:0;border-radius:10px;background:#fff"></iframe></div>` : ''}
+                <div class="fp-card">
+                  <h4>📝 Catatan &amp; Aktivitas di Fitur Ini</h4>
+                  <div class="fp-row" style="margin:10px 0"><input class="fp-input" id="cmNote" placeholder="Tambahkan catatan / poin baru..." style="flex:1"><button class="fp-btn sm" id="cmAdd">+ Tambah</button></div>
+                  <div class="fp-list">${notes.map((n,i)=>`<div class="fp-item"><span>${esc(n)}</span><button class="fp-btn sm danger" data-cd="${i}">Hapus</button></div>`).join('')||'<div class="fp-empty" style="padding:18px">Belum ada catatan.</div>'}</div>
+                </div>`;
+              body.querySelector('#cmAdd').onclick=()=>{const v=body.querySelector('#cmNote').value.trim();if(!v)return;notes.unshift(v);LS.set(notesKey,notes);FEATURES['custom:'+m.id].render(body);};
+              body.querySelectorAll('[data-cd]').forEach(btn=>btn.onclick=()=>{notes.splice(+btn.dataset.cd,1);LS.set(notesKey,notes);FEATURES['custom:'+m.id].render(body);});
+            }
+          };
+        });
+      }
+    }
+  };
+
   function emitSync(){
+    try { FeatureConfig.applySidebarConfig(); } catch(_){}
     try { window.dispatchEvent(new CustomEvent('pb:sync')); } catch(_){}
   }
   const getMyClass = ()=>{
@@ -655,11 +768,13 @@
       const fmtSize=(n)=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB';
       const draw=()=>{
         const dr = Drive.state();
+        const upOk = FeatureConfig.subEnabled('materi_upload');
+        const fltOk = FeatureConfig.subEnabled('materi_filter');
         const storeNote = dr.ready
           ? `<span style="font-size:12px;color:#047857">☁️ Tersimpan di Google Drive — maks. ${Math.round(dr.maxBytes/1048576)}MB per file, otomatis bisa dibuka semua siswa.</span>`
           : `<span style="font-size:12px;color:#b45309">⚠️ Google Drive belum aktif — file disimpan lokal (maks. 5MB, hanya di browser ini).</span>`;
         b.innerHTML=`
-        <div style="display:grid;gap:10px;margin-bottom:12px;padding:12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px">
+        <div class="fp-card" style="display:grid;gap:10px;margin-bottom:12px">
           <div class="fp-row">
             <input class="fp-input" id="mj" placeholder="Judul materi" style="flex:1;min-width:200px"/>
             <select class="fp-select" id="mk" style="width:120px">${classOptionsHtml()}</select>
@@ -667,7 +782,7 @@
           </div>
           <div class="fp-row">
             <input class="fp-input" id="ml" placeholder="Link materi (opsional, mis. https://drive.google.com/...)" style="flex:1;min-width:220px"/>
-            <input type="file" id="mf" class="fp-input" style="width:220px" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.html,.htm,.jpg,.jpeg,.png,.webp,.gif,.mp4,.zip"/>
+            ${upOk?`<input type="file" id="mf" class="fp-input" style="width:220px" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.html,.htm,.jpg,.jpeg,.png,.webp,.gif,.mp4,.zip"/>`:''}
             <button class="fp-btn sm" id="mAdd">+ Tambah</button>
           </div>
           <div class="fp-row" style="justify-content:space-between">
@@ -676,22 +791,26 @@
           </div>
           <div id="mStat" style="font-size:12px;color:#475569"></div>
         </div>
-        <label class="fp-label" for="mFilter">Mata pelajaran</label>
-        <select class="fp-select" id="mFilter" style="margin-bottom:12px"><option value="ALL">Semua mata pelajaran</option>${subjectOptionsHtml(subjectFilter)}</select>
+        ${fltOk?`<label class="fp-label" for="mFilter">Mata pelajaran</label>
+        <select class="fp-select" id="mFilter" style="margin-bottom:12px"><option value="ALL">Semua mata pelajaran</option>${subjectOptionsHtml(subjectFilter)}</select>`:''}
         <div style="overflow-x:auto"><table class="fp-table"><thead><tr><th>Judul</th><th>Mata pelajaran</th><th>Kelas</th><th>Sumber</th><th>Status</th><th></th></tr></thead>
         <tbody>${list.map((m,i)=>{
-          if(subjectFilter!=='ALL' && materialSubject(m)!==subjectFilter) return '';
+          if(fltOk && subjectFilter!=='ALL' && materialSubject(m)!==subjectFilter) return '';
           const srcs=[];
           if(m.l) srcs.push(`<a href="${esc(m.l)}" target="_blank" rel="noopener" style="color:#4f46e5;text-decoration:underline">Link</a>`);
           if(m.f) srcs.push(`<a href="${esc(m.f.data)}" ${m.f.drive?'target="_blank" rel="noopener"':`download="${esc(m.f.name)}"`} style="color:#4f46e5;text-decoration:underline">${esc(m.f.name)}</a> <span style="color:#94a3b8;font-size:11px">(${fmtSize(m.f.size)}${m.f.drive?' · Drive':' · lokal'})</span>`);
           if(!srcs.length) srcs.push('<span style="color:#94a3b8">—</span>');
-          return `<tr><td>${esc(m.j)}</td><td><select class="fp-select" data-subject="${i}" aria-label="Mata pelajaran ${esc(m.j)}" style="min-width:180px">${subjectOptionsHtml(materialSubject(m))}</select></td><td>${m.k==='ALL'?'<span class="fp-badge info">Semua Kelas</span>':esc(m.k)}</td><td>${srcs.join('<br>')}</td>
+          return `<tr><td><b>${esc(m.j)}</b></td><td><select class="fp-select" data-subject="${i}" aria-label="Mata pelajaran ${esc(m.j)}" style="min-width:180px">${subjectOptionsHtml(materialSubject(m))}</select></td><td>${m.k==='ALL'?'<span class="fp-badge info">Semua Kelas</span>':esc(m.k)}</td><td>${srcs.join('<br>')}</td>
           <td><span class="fp-badge ${m.s==='Terbit'?'ok':'warn'}">${m.s}</span></td>
-          <td style="text-align:right;white-space:nowrap"><button class="fp-btn sm ghost" data-t="${i}">Toggle</button>
+          <td style="text-align:right;white-space:nowrap">
+          <button class="fp-btn sm ghost" data-ed="${i}">✏️ Edit</button>
+          <button class="fp-btn sm ghost" data-t="${i}">Toggle</button>
           <button class="fp-btn sm danger" data-d="${i}">Hapus</button></td></tr>`;
         }).join('')}</tbody></table></div>`;
-        b.querySelector('#mFilter').value=subjectFilter;
-        b.querySelector('#mFilter').onchange=e=>{subjectFilter=e.target.value;draw();};
+        if(fltOk && b.querySelector('#mFilter')){
+          b.querySelector('#mFilter').value=subjectFilter;
+          b.querySelector('#mFilter').onchange=e=>{subjectFilter=e.target.value;draw();};
+        }
         b.querySelectorAll('[data-subject]').forEach(el=>el.onchange=()=>{list[+el.dataset.subject].mapel=el.value;save();draw();});
         const stat=b.querySelector('#mStat');
         const setStat=(t,c)=>{stat.textContent=t||''; stat.style.color=c||'#475569';};
@@ -700,7 +819,7 @@
           const j=b.querySelector('#mj').value.trim();if(!j)return alert('Judul materi wajib diisi');
           const mapel=b.querySelector('#mm').value;if(!mapel)return alert('Pilih mata pelajaran materi terlebih dahulu.');
           const l=b.querySelector('#ml').value.trim();
-          const fEl=b.querySelector('#mf'); const file=fEl.files&&fEl.files[0];
+          const fEl=b.querySelector('#mf'); const file=fEl&&fEl.files&&fEl.files[0];
           const entry={j,k:b.querySelector('#mk').value,mapel,s:'Terbit'};
           if(l) entry.l=l;
           if(file){
@@ -725,6 +844,16 @@
           }
           list.push(entry);save();draw();
         };
+        b.querySelectorAll('[data-ed]').forEach(x=>x.onclick=()=>{
+          const m=list[+x.dataset.ed];
+          const nj=prompt('Edit judul materi:', m.j); if(nj===null) return;
+          const nk=prompt('Edit kelas (ALL atau mis. X-1):', m.k||'ALL'); if(nk===null) return;
+          const nl=prompt('Edit link materi (opsional):', m.l||''); if(nl===null) return;
+          if(nj.trim()) m.j=nj.trim();
+          m.k=canonicalClass(nk)||'ALL';
+          if(nl.trim()) m.l=nl.trim(); else delete m.l;
+          save(); draw();
+        });
         b.querySelectorAll('[data-t]').forEach(x=>x.onclick=()=>{const i=+x.dataset.t;list[i].s=list[i].s==='Terbit'?'Draft':'Terbit';save();draw();});
         b.querySelectorAll('[data-d]').forEach(x=>x.onclick=async()=>{
           if(!confirm('Hapus materi ini?'))return;
@@ -1176,8 +1305,9 @@
       const myClass = getMyClass();
       const draw=()=>{
         if(ROLE==='guru'){
+          const upOk = FeatureConfig.subEnabled('tugas_upload');
           b.innerHTML=`
-          <div style="display:grid;gap:10px;margin-bottom:12px;padding:12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px">
+          <div class="fp-card" style="display:grid;gap:10px;margin-bottom:12px">
             <div class="fp-row">
               <input class="fp-input" id="tj" placeholder="Judul tugas" style="flex:1;min-width:200px"/>
               <input class="fp-input" id="td" placeholder="Deadline" style="width:160px"/>
@@ -1186,17 +1316,18 @@
             <textarea class="fp-input" id="tdesc" placeholder="Instruksi tugas..." style="width:100%;min-height:60px;resize:vertical"></textarea>
             <div class="fp-row">
               <input class="fp-input" id="tl" placeholder="Link lampiran (opsional)" style="flex:1;min-width:220px"/>
-              <input type="file" id="tf" class="fp-input" style="width:220px"/>
+              ${upOk?`<input type="file" id="tf" class="fp-input" style="width:220px"/>`:''}
               <button class="fp-btn sm" id="tAdd">+ Tugas</button>
             </div>
           </div>
           <table class="fp-table"><thead><tr><th>Judul</th><th>Kelas</th><th>Deadline</th><th>Pengumpulan</th><th>Status</th><th></th></tr></thead>
           <tbody>${list.map((t,i)=>{
             const sm=subs()[i]||[];
-            return `<tr><td>${esc(t.j)}</td><td>${esc(t.k)}</td><td>${esc(t.d)}</td>
+            return `<tr><td><b>${esc(t.j)}</b></td><td>${esc(t.k)}</td><td>${esc(t.d)}</td>
             <td><button class="fp-btn sm ghost" data-v="${i}">${sm.length} pengumpulan</button></td>
             <td><span class="fp-badge ${t.s==='Aktif'?'ok':'warn'}">${t.s}</span></td>
             <td style="text-align:right;white-space:nowrap">
+              <button class="fp-btn sm ghost" data-ed="${i}">✏️ Edit</button>
               <button class="fp-btn sm ghost" data-t="${i}">Toggle</button>
               <button class="fp-btn sm danger" data-d="${i}">Hapus</button></td></tr>`;
           }).join('')}</tbody></table>`;
@@ -1204,9 +1335,20 @@
             const j=b.querySelector('#tj').value.trim(); if(!j) return alert('Judul wajib');
             const entry={j,k:b.querySelector('#tk').value,d:b.querySelector('#td').value.trim()||'TBD',s:'Aktif',desc:b.querySelector('#tdesc').value.trim()};
             const l=b.querySelector('#tl').value.trim(); if(l) entry.l=l;
-            try{const f=await readFile(b.querySelector('#tf').files[0]); if(f) entry.f=f;}catch(e){return alert(e.message);}
+            const tfEl=b.querySelector('#tf');
+            if(tfEl&&tfEl.files&&tfEl.files[0]){ try{const f=await readFile(tfEl.files[0]); if(f) entry.f=f;}catch(e){return alert(e.message);} }
             list.push(entry); save(); draw();
           };
+          b.querySelectorAll('[data-ed]').forEach(x=>x.onclick=()=>{
+            const t=list[+x.dataset.ed];
+            const nj=prompt('Edit judul tugas:', t.j); if(nj===null) return;
+            const nd=prompt('Edit deadline:', t.d||'TBD'); if(nd===null) return;
+            const ndesc=prompt('Edit instruksi tugas:', t.desc||''); if(ndesc===null) return;
+            const nk=prompt('Edit kelas (ALL atau mis. X-1):', t.k||'ALL'); if(nk===null) return;
+            if(nj.trim()) t.j=nj.trim();
+            t.d=nd.trim()||'TBD'; t.desc=ndesc.trim(); t.k=canonicalClass(nk)||'ALL';
+            save(); draw();
+          });
           b.querySelectorAll('[data-t]').forEach(x=>x.onclick=()=>{const i=+x.dataset.t;list[i].s=list[i].s==='Aktif'?'Draft':'Aktif';save();draw();});
           b.querySelectorAll('[data-d]').forEach(x=>x.onclick=()=>{if(confirm('Hapus?')){list.splice(+x.dataset.d,1);save();draw();}});
           b.querySelectorAll('[data-v]').forEach(x=>x.onclick=()=>{
@@ -1323,8 +1465,9 @@
       const myClass=getMyClass();
       const draw=()=>{
         if(ROLE==='guru'){
+          const upOk = FeatureConfig.subEnabled('tugas_upload');
           b.innerHTML=`
-          <div style="display:grid;gap:10px;margin-bottom:12px;padding:12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px">
+          <div class="fp-card" style="display:grid;gap:10px;margin-bottom:12px">
             <div class="fp-row">
               <input class="fp-input" id="lj" placeholder="Judul LKPD" style="flex:1;min-width:200px"/>
               <select class="fp-select" id="lk" style="width:120px">${classOptionsHtml()}</select>
@@ -1332,23 +1475,35 @@
             <textarea class="fp-input" id="ldesc" placeholder="Petunjuk pengerjaan..." style="width:100%;min-height:60px;resize:vertical"></textarea>
             <div class="fp-row">
               <input class="fp-input" id="ll" placeholder="Link (opsional)" style="flex:1;min-width:220px"/>
-              <input type="file" id="lf" class="fp-input" style="width:220px"/>
+              ${upOk?`<input type="file" id="lf" class="fp-input" style="width:220px"/>`:''}
               <button class="fp-btn sm" id="lAdd">+ LKPD</button>
             </div></div>
           <div class="fp-list">${list.map((x,i)=>{
             const n=(subs()[i]||[]).length;
             return `<div class="fp-item"><div style="flex:1"><div class="t">${esc(x.j)}</div>
               <div class="m">${esc(x.k)} · ${esc(x.desc||'')}</div></div>
-              <div style="display:flex;gap:6px"><button class="fp-btn sm ghost" data-v="${i}">${n} pengerjaan</button>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="fp-btn sm ghost" data-ed="${i}">✏️ Edit</button>
+              <button class="fp-btn sm ghost" data-v="${i}">${n} pengerjaan</button>
               <button class="fp-btn sm danger" data-d="${i}">Hapus</button></div></div>`;
           }).join('')||'<div class="fp-empty">Belum ada LKPD.</div>'}</div>`;
           b.querySelector('#lAdd').onclick=async()=>{
             const j=b.querySelector('#lj').value.trim(); if(!j) return alert('Judul wajib');
             const entry={j,k:b.querySelector('#lk').value,desc:b.querySelector('#ldesc').value.trim()};
             const l=b.querySelector('#ll').value.trim(); if(l) entry.l=l;
-            try{const f=await readFile(b.querySelector('#lf').files[0]); if(f) entry.f=f;}catch(e){return alert(e.message);}
+            const lfEl=b.querySelector('#lf');
+            if(lfEl&&lfEl.files&&lfEl.files[0]){ try{const f=await readFile(lfEl.files[0]); if(f) entry.f=f;}catch(e){return alert(e.message);} }
             list.push(entry); save(); draw();
           };
+          b.querySelectorAll('[data-ed]').forEach(x=>x.onclick=()=>{
+            const it=list[+x.dataset.ed];
+            const nj=prompt('Edit judul LKPD:', it.j); if(nj===null) return;
+            const nd=prompt('Edit petunjuk:', it.desc||''); if(nd===null) return;
+            const nk=prompt('Edit kelas (ALL atau mis. X-1):', it.k||'ALL'); if(nk===null) return;
+            if(nj.trim()) it.j=nj.trim();
+            it.desc=nd.trim(); it.k=canonicalClass(nk)||'ALL';
+            save(); draw();
+          });
           b.querySelectorAll('[data-d]').forEach(x=>x.onclick=()=>{if(confirm('Hapus?')){list.splice(+x.dataset.d,1);save();draw();}});
           b.querySelectorAll('[data-v]').forEach(x=>x.onclick=()=>{
             const i=+x.dataset.v; const sm=subs()[i]||[];
@@ -1492,13 +1647,13 @@
       const draw=()=>{
         if(ROLE==='guru'){
           b.innerHTML=`
-          <div style="display:grid;gap:10px;margin-bottom:12px;padding:12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px">
+          <div class="fp-card" style="display:grid;gap:10px;margin-bottom:12px">
             <div class="fp-row">
               <input class="fp-input" id="qj" placeholder="Judul quiz" style="flex:1;min-width:200px"/>
               <select class="fp-select" id="qk" style="width:120px">${classOptionsHtml()}</select>
               <button class="fp-btn sm" id="qAdd">+ Quiz</button>
             </div>
-            <div style="font-size:11px;color:#64748b">Setelah dibuat, klik "Soal" untuk menambah pertanyaan, lalu "Hasil" untuk rekap nilai siswa.</div>
+            <div style="font-size:11px;color:#64748b">Setelah dibuat, klik "Soal" untuk menambah pertanyaan, lalu "Hasil" untuk rekap nilai siswa. Semua quiz otomatis muncul di Arena Game Quiz.</div>
           </div>
           <div class="fp-list">${list.map((x,i)=>{
             const h=hasil(x,i);
@@ -1506,12 +1661,21 @@
             const rata=h.length?Math.round(h.reduce((a,s)=>a+(Number(s.nilai)||0),0)/h.length):0;
             return `<div class="fp-item"><div style="flex:1"><div class="t">${esc(x.j)}</div>
               <div class="m">${esc(x.k)} · ${x.soal.length} soal · ${h.length?`<b>${h.length}</b> siswa mengerjakan · rata-rata <b>${rata}</b>`:'belum ada pengerjaan'}${baru?` · <span style="color:#b91c1c;font-weight:700">🔔 ${baru} pengerjaan baru</span>`:''}</div></div>
-              <div style="display:flex;gap:6px">
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <button class="fp-btn sm ghost" data-ed="${i}">✏️ Edit</button>
                 <button class="fp-btn sm ghost" data-e="${i}">Soal</button>
                 <button class="fp-btn sm" data-h="${i}">Hasil${h.length?` (${h.length})`:''}${baru?` <span style="background:#ef4444;color:#fff;border-radius:999px;padding:1px 6px;font-size:10px;margin-left:2px">${baru} baru</span>`:''}</button>
                 <button class="fp-btn sm danger" data-d="${i}">Hapus</button>
               </div></div>`;}).join('')||'<div class="fp-empty">Belum ada quiz.</div>'}</div>`;
-          b.querySelector('#qAdd').onclick=()=>{const j=b.querySelector('#qj').value.trim();if(!j)return;list.push({j,k:b.querySelector('#qk').value,soal:[]});save();draw();};
+          b.querySelector('#qAdd').onclick=()=>{const j=b.querySelector('#qj').value.trim();if(!j)return;list.push({id:crypto.randomUUID(),j,k:b.querySelector('#qk').value,soal:[]});save();draw();};
+          b.querySelectorAll('[data-ed]').forEach(x=>x.onclick=()=>{
+            const q=list[+x.dataset.ed];
+            const nj=prompt('Edit judul quiz:', q.j); if(nj===null) return;
+            const nk=prompt('Edit kelas (ALL atau mis. X-1):', q.k||'ALL'); if(nk===null) return;
+            if(nj.trim()) q.j=nj.trim();
+            q.k=canonicalClass(nk)||'ALL';
+            save(); draw();
+          });
           b.querySelectorAll('[data-d]').forEach(x=>x.onclick=()=>{if(confirm('Hapus quiz?')){list.splice(+x.dataset.d,1);save();draw();}});
           b.querySelectorAll('[data-e]').forEach(x=>x.onclick=()=>editSoal(+x.dataset.e));
           b.querySelectorAll('[data-h]').forEach(x=>x.onclick=()=>lihatHasil(+x.dataset.h));
@@ -1646,7 +1810,7 @@
   };
 
   FEATURES.bank = {
-    ico:'B', title:'Bank Soal', sub:'Kumpulan soal siap pakai',
+    ico:'B', title:'Bank Soal', sub:'Kumpulan soal siap pakai — tambah, edit, atau kirim langsung ke Quiz',
     render(b){
       const key=K('bank'); let list=LS.get(key,[
         {q:'Jelaskan pengertian algoritma.',t:'Esai',b:'X'},
@@ -1654,14 +1818,43 @@
         {q:'Perbedaan RAM dan ROM?',t:'Esai',b:'X'}
       ]); const save=()=>LS.set(key,list);
       const draw=()=>{
-        b.innerHTML=`<div class="fp-row" style="margin-bottom:12px">
-        <input class="fp-input" id="bq" placeholder="Tulis soal baru..." style="flex:1;min-width:200px"/>
-        <select class="fp-select" id="bt" style="width:120px"><option>Esai</option><option>Isian</option><option>PG</option></select>
-        <button class="fp-btn sm" id="bAdd">+ Simpan</button></div>
-        <table class="fp-table"><thead><tr><th>Soal</th><th>Tipe</th><th></th></tr></thead>
-        <tbody>${list.map((x,i)=>`<tr><td>${esc(x.q)}</td><td><span class="fp-badge info">${x.t}</span></td>
-        <td style="text-align:right"><button class="fp-btn sm danger" data-d="${i}">Hapus</button></td></tr>`).join('')}</tbody></table>`;
-        b.querySelector('#bAdd').onclick=()=>{const q=b.querySelector('#bq').value.trim();if(!q)return;list.unshift({q,t:b.querySelector('#bt').value,b:'X'});save();draw();};
+        b.innerHTML=`
+        <div class="fp-card" style="margin-bottom:12px">
+          <div class="fp-row">
+            <input class="fp-input" id="bq" placeholder="Tulis soal baru..." style="flex:1;min-width:200px"/>
+            <select class="fp-select" id="bt" style="width:120px"><option>Esai</option><option>Isian</option><option>PG</option></select>
+            <select class="fp-select" id="bk" style="width:110px">${ALL_CLASSES.map(c=>`<option>${c}</option>`).join('')}</select>
+            <button class="fp-btn sm" id="bAdd">+ Simpan</button>
+          </div>
+        </div>
+        <table class="fp-table"><thead><tr><th>Soal</th><th>Tipe</th><th>Kelas</th><th></th></tr></thead>
+        <tbody>${list.map((x,i)=>`<tr><td>${esc(x.q)}</td><td><span class="fp-badge info">${esc(x.t)}</span></td><td>${esc(x.b||'X')}</td>
+        <td style="text-align:right;white-space:nowrap">
+          <button class="fp-btn sm ghost" data-toq="${i}" title="Kirim ke paket Quiz">📤 Ke Quiz</button>
+          <button class="fp-btn sm ghost" data-ed="${i}">✏️ Edit</button>
+          <button class="fp-btn sm danger" data-d="${i}">Hapus</button>
+        </td></tr>`).join('')}</tbody></table>`;
+        b.querySelector('#bAdd').onclick=()=>{const q=b.querySelector('#bq').value.trim();if(!q)return;list.unshift({q,t:b.querySelector('#bt').value,b:b.querySelector('#bk').value||'X'});save();draw();};
+        b.querySelectorAll('[data-ed]').forEach(x=>x.onclick=()=>{
+          const it=list[+x.dataset.ed];
+          const nq=prompt('Edit pertanyaan:', it.q); if(nq===null) return;
+          if(nq.trim()) it.q=nq.trim();
+          save(); draw();
+        });
+        b.querySelectorAll('[data-toq]').forEach(x=>x.onclick=()=>{
+          const it=list[+x.dataset.toq];
+          const quizzes=LS.get('pb.guru.quiz',[])||[];
+          if(!quizzes.length) return alert('Buat paket Quiz dulu di menu Quiz.');
+          const idxStr=prompt('Kirim soal ke Quiz nomor (0 s/d '+(quizzes.length-1)+'):\n'+quizzes.map((q,n)=>n+': '+q.j).join('\n'), '0');
+          if(idxStr===null) return;
+          const qi=+idxStr; if(!quizzes[qi]) return alert('Nomor quiz tidak ditemukan.');
+          const ops=prompt('Masukkan 4 opsi PG dipisah "|" (Opsi A | B | C | D):', 'Pilihan A | Pilihan B | Pilihan C | Pilihan D');
+          if(ops===null) return;
+          const o=ops.split('|').map(s=>s.trim()).concat(['-','-','-','-']).slice(0,4);
+          quizzes[qi].soal.push({q:it.q, o, a:0});
+          LS.set('pb.guru.quiz', quizzes); SharedCatalog.publish();
+          Guard.notify('Soal disalin ke "' + quizzes[qi].j + '" ✓');
+        });
         b.querySelectorAll('[data-d]').forEach(x=>x.onclick=()=>{list.splice(+x.dataset.d,1);save();draw();});
       }; draw();
     }
@@ -1866,100 +2059,204 @@
   FEATURES.laporan = {ico:'R', title:'Rekap Hasil Siswa', sub:'Tugas, LKPD, quiz, dan game per kelas', render:renderResults};
 
   FEATURES.jadwal = {
-    ico:'J', title:'Jadwal Mengajar', sub:'Rencana mingguan',
+    ico:'📅', title:'Jadwal Mengajar', sub:'Kelola jadwal mingguan kelas — tersinkron otomatis ke dashboard siswa',
     render(b){
-      const j=[['Senin','07:30–09:00','X-A','Informatika'],['Senin','10:00–11:30','X-B','Informatika'],
-        ['Selasa','08:15–09:45','XI-A','KKA'],['Rabu','07:30–09:00','X-A','Informatika'],
-        ['Kamis','09:45–11:15','X-B','Informatika'],['Jumat','07:30–09:00','XI-A','KKA']];
-      b.innerHTML=`<table class="fp-table"><thead><tr><th>Hari</th><th>Jam</th><th>Kelas</th><th>Mapel</th></tr></thead>
-      <tbody>${j.map(r=>`<tr><td><b>${r[0]}</b></td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td></tr>`).join('')}</tbody></table>`;
+      if(ROLE==='murid') return FEATURES.jadwal_murid.render(b);
+      const getRows = ()=>{
+        const cfg = FeatureConfig.get();
+        return Array.isArray(cfg.jadwal) ? cfg.jadwal.slice() : DEFAULT_SCHEDULE.map(x=>({...x}));
+      };
+      const saveRows = rows => {
+        const cfg = FeatureConfig.get();
+        cfg.jadwal = rows;
+        FeatureConfig.save(cfg);
+      };
+      const draw = ()=>{
+        const rows = getRows();
+        b.innerHTML=`
+          ${ROLE==='guru'?`<div class="fp-card" style="margin-bottom:14px">
+            <h4>➕ Tambah Jadwal Mengajar</h4>
+            <div class="fp-row" style="margin-top:8px">
+              <select class="fp-select" id="jdH" style="width:115px"><option>Senin</option><option>Selasa</option><option>Rabu</option><option>Kamis</option><option>Jumat</option><option>Sabtu</option></select>
+              <input class="fp-input" id="jdJ" placeholder="07:30–09:00" style="width:130px"/>
+              <select class="fp-select" id="jdK" style="width:125px">${classOptionsHtml('X-1')}</select>
+              <select class="fp-select" id="jdM" style="width:160px"><option>Informatika</option><option>KKA</option></select>
+              <input class="fp-input" id="jdR" placeholder="Ruang (mis. Lab Kom)" style="flex:1;min-width:140px"/>
+              <button class="fp-btn sm" id="jdAdd">+ Tambah</button>
+            </div>
+          </div>`:''}
+          <table class="fp-table"><thead><tr><th>Hari</th><th>Jam</th><th>Kelas</th><th>Mapel</th><th>Ruang</th>${ROLE==='guru'?'<th></th>':''}</tr></thead>
+          <tbody>${rows.map((r,i)=>`<tr><td><b>${esc(r.hari)}</b></td><td>${esc(r.jam)}</td><td><span class="fp-badge info">${esc(r.kelas)}</span></td><td>${esc(r.mapel)}</td><td>${esc(r.ruang||'-')}</td>${ROLE==='guru'?`<td style="text-align:right"><button class="fp-btn sm danger" data-jd="${i}">Hapus</button></td>`:''}</tr>`).join('')||'<tr><td colspan="6" class="fp-empty">Belum ada jadwal.</td></tr>'}</tbody></table>`;
+        if(ROLE==='guru'){
+          b.querySelector('#jdAdd').onclick=()=>{
+            const jam=b.querySelector('#jdJ').value.trim()||'07:30–09:00';
+            rows.push({hari:b.querySelector('#jdH').value,jam,kelas:b.querySelector('#jdK').value,mapel:b.querySelector('#jdM').value,ruang:b.querySelector('#jdR').value.trim()||'Lab Kom'});
+            saveRows(rows); draw();
+          };
+          b.querySelectorAll('[data-jd]').forEach(btn=>btn.onclick=()=>{rows.splice(+btn.dataset.jd,1);saveRows(rows);draw();});
+        }
+      };
+      draw();
     }
   };
 
   FEATURES.pengaturan = {
-    ico:'⚙️', title:'Database Google Colab & Sinkronisasi', sub:'Hubungkan Google Colab SQLite + Google Drive, bagikan link siswa, dan migrasikan data',
-    render(b){
+    ico:'⚙️', title:'Pengaturan & Kelola Fitur', sub:'Koneksi Google Colab SQLite serta tambah/kurangi fitur dan sub-fungsi aplikasi',
+    render(b, opts){
       const colabUrl = window.colabDb ? window.colabDb.getUrl() : '';
       const ready = window.colabDb && window.colabDb.isReady();
       const migrated = localStorage.getItem('pb.migrated.colab.v1') === 'done';
       const shareUrl = colabUrl ? (location.origin + '/?colab=' + encodeURIComponent(colabUrl)) : '';
-      b.innerHTML=`
-        <div class="fp-card" style="margin-bottom:14px">
-          <div class="fp-row" style="justify-content:space-between">
-            <div>
-              <h4>Status Database Google Colab SQLite</h4>
-              <p>${ready ? 'Terhubung ke server Google Colab ('+esc(colabUrl)+'). Semua materi, tugas, quiz & nilai tersimpan ke Google Drive.' : 'Mode Lokal (belum dihubungkan ke Google Colab tunnel).'}</p>
-            </div>
-            <span class="fp-badge ${ready?'ok':'warn'}">${ready?'🟢 Colab Terhubung':'🟡 Mode Lokal'}</span>
+      let activeTab = (opts && opts.tab) || this._tab || 'colab';
+      this._tab = activeTab;
+      const cfg = FeatureConfig.get();
+
+      const draw = ()=>{
+        b.innerHTML=`
+          <div class="fp-tabs">
+            <div class="fp-tab ${activeTab==='colab'?'on':''}" data-tab="colab">⚙️ Database Google Colab</div>
+            <div class="fp-tab ${activeTab==='modul'?'on':''}" data-tab="modul">🧩 Tambah / Kurangi Fitur (${cfg.customModules.length} kustom)</div>
           </div>
-        </div>
-        <div class="fp-card" style="margin-bottom:14px">
-          <h4>URL Public Tunnel Google Colab</h4>
-          <p style="font-size:12px;color:#64748b;margin:4px 0 8px">Jalankan notebook <code>colab/portalbelajar_colab_database.ipynb</code> di Google Colab lalu tempel link tunnel (Cloudflare/Ngrok) di bawah ini:</p>
-          <div style="display:grid;gap:10px;margin-top:10px">
-            <div><label class="fp-label">URL Server Colab</label><input class="fp-input" id="cfgUrl" value="${esc(colabUrl)}" placeholder="https://xxxx-xxxx.trycloudflare.com"/></div>
-            <div class="fp-row" style="flex-wrap:wrap;gap:8px">
-              <button class="fp-btn sm" id="cfgSave">💾 Simpan &amp; Uji Koneksi</button>
-              <button class="fp-btn sm ghost" id="cfgSync" ${ready?'':'disabled'}>🔄 Migrasi Data Lokal ke Colab</button>
-              <button class="fp-btn sm ghost" id="cfgCopyLink" ${shareUrl?'':'disabled'}>📋 Salin Link Siswa</button>
+          <div id="cfgPane"></div>`;
+        b.querySelectorAll('[data-tab]').forEach(t=>t.onclick=()=>{activeTab=t.dataset.tab;this._tab=activeTab;draw();});
+        const pane = b.querySelector('#cfgPane');
+        if(activeTab === 'colab'){
+          pane.innerHTML=`
+            <div class="fp-card" style="margin-bottom:14px">
+              <div class="fp-row" style="justify-content:space-between">
+                <div>
+                  <h4>Status Database Google Colab SQLite</h4>
+                  <p>${ready ? 'Terhubung ke server Google Colab ('+esc(colabUrl)+'). Semua materi, tugas, quiz & nilai tersimpan ke Google Drive.' : 'Mode Lokal (belum dihubungkan ke Google Colab tunnel).'}</p>
+                </div>
+                <span class="fp-badge ${ready?'ok':'warn'}">${ready?'🟢 Colab Terhubung':'🟡 Mode Lokal'}</span>
+              </div>
             </div>
-            ${shareUrl ? `<div style="font-size:12px;background:#f8fafc;padding:8px 10px;border-radius:8px;border:1px solid #e2e8f0;word-break:break-all"><b>Link Auto-Connect Siswa:</b> <span id="cfgShareTxt">${esc(shareUrl)}</span></div>` : ''}
-            <div id="cfgMsg" style="font-size:12.5px;color:#475569"></div>
-          </div>
-        </div>
-        <div class="fp-card">
-          <h4>Ringkasan Data Lokal</h4>
-          <p>Materi: <b>${(LS.get(SK('materi'),[])||[]).length}</b> · Tugas: <b>${(LS.get(SK('tugas'),[])||[]).length}</b> · LKPD: <b>${(LS.get(SK('lkpd'),[])||[]).length}</b> · Quiz: <b>${(LS.get(SK('quiz'),[])||[]).length}</b> · Migrasi Colab: <b>${migrated?'Sudah':'Belum'}</b></p>
-        </div>`;
-      b.querySelector('#cfgSave').onclick=async()=>{
-        const u=b.querySelector('#cfgUrl').value.trim();
-        const msgEl=b.querySelector('#cfgMsg');
-        if(!window.colabDb) return;
-        window.colabDb.setUrl(u);
-        if(!u){
-          msgEl.textContent='URL Google Colab dikosongkan (kembali ke mode lokal).';
-          FEATURES.pengaturan.render(b);
+            <div class="fp-card" style="margin-bottom:14px">
+              <h4>URL Public Tunnel Google Colab</h4>
+              <p style="font-size:12px;color:#64748b;margin:4px 0 8px">Jalankan notebook <code>colab/portalbelajar_colab_database.ipynb</code> di Google Colab lalu tempel link tunnel (Cloudflare/Ngrok) di bawah ini:</p>
+              <div style="display:grid;gap:10px;margin-top:10px">
+                <div><label class="fp-label">URL Server Colab</label><input class="fp-input" id="cfgUrl" value="${esc(colabUrl)}" placeholder="https://xxxx-xxxx.trycloudflare.com"/></div>
+                <div class="fp-row" style="flex-wrap:wrap;gap:8px">
+                  <button class="fp-btn sm" id="cfgSave">💾 Simpan &amp; Uji Koneksi</button>
+                  <button class="fp-btn sm ghost" id="cfgSync" ${ready?'':'disabled'}>🔄 Migrasi Data Lokal ke Colab</button>
+                  <button class="fp-btn sm ghost" id="cfgCopyLink" ${shareUrl?'':'disabled'}>📋 Salin Link Siswa</button>
+                </div>
+                ${shareUrl ? `<div style="font-size:12px;padding:8px 10px;border-radius:8px;border:1px solid #e2e8f0;word-break:break-all"><b>Link Auto-Connect Siswa:</b> <span id="cfgShareTxt">${esc(shareUrl)}</span></div>` : ''}
+                <div id="cfgMsg" style="font-size:12.5px;color:#475569"></div>
+              </div>
+            </div>
+            <div class="fp-card">
+              <h4>Ringkasan Data Lokal</h4>
+              <p>Materi: <b>${(LS.get(SK('materi'),[])||[]).length}</b> · Tugas: <b>${(LS.get(SK('tugas'),[])||[]).length}</b> · LKPD: <b>${(LS.get(SK('lkpd'),[])||[]).length}</b> · Quiz: <b>${(LS.get(SK('quiz'),[])||[]).length}</b> · Migrasi Colab: <b>${migrated?'Sudah':'Belum'}</b></p>
+            </div>`;
+          pane.querySelector('#cfgSave').onclick=async()=>{
+            const u=pane.querySelector('#cfgUrl').value.trim();
+            const msgEl=pane.querySelector('#cfgMsg');
+            if(!window.colabDb) return;
+            window.colabDb.setUrl(u);
+            if(!u){ msgEl.textContent='URL Google Colab dikosongkan (kembali ke mode lokal).'; FEATURES.pengaturan.render(b); return; }
+            msgEl.textContent='⏳ Menguji koneksi ke Google Colab SQLite...';
+            try{
+              const h=await window.colabDb.testConnection(u);
+              msgEl.textContent='✅ Terhubung ke Google Colab SQLite! Mengambil data terbaru... ('+(h.counts?.accounts||0)+' akun, '+(h.counts?.submissions||0)+' kiriman)';
+              await SharedCatalog.pull(); await Activity.pull(); emitSync();
+              setTimeout(()=>FEATURES.pengaturan.render(b), 600);
+            }catch(err){ msgEl.textContent='⚠️ URL disimpan, namun server belum merespons: '+(err.message||err); }
+          };
+          const copyBtn=pane.querySelector('#cfgCopyLink');
+          if(copyBtn){
+            copyBtn.onclick=async()=>{
+              try{ await navigator.clipboard.writeText(shareUrl); pane.querySelector('#cfgMsg').textContent='✅ Link auto-connect siswa disalin!'; }
+              catch(_){ prompt('Salin link ini untuk dibagikan ke siswa:', shareUrl); }
+            };
+          }
+          pane.querySelector('#cfgSync').onclick=async()=>{
+            if(typeof window.runMigration==='function'){
+              pane.querySelector('#cfgMsg').textContent='⏳ Mengirim semua data lokal ke Google Colab SQLite...';
+              const res=await window.runMigration({force:true});
+              if(res&&res.ok){
+                pane.querySelector('#cfgMsg').textContent='✅ Migrasi selesai! Semua data kini tersimpan di Google Colab & Google Drive.';
+                await SharedCatalog.pull(); await Activity.pull(); emitSync();
+              }else{ pane.querySelector('#cfgMsg').textContent='⚠️ Migrasi gagal: '+((res&&res.error)||'Pastikan URL & passphrase guru benar.'); }
+            }
+          };
           return;
         }
-        msgEl.textContent='⏳ Menguji koneksi ke Google Colab SQLite...';
-        try{
-          const h=await window.colabDb.testConnection(u);
-          msgEl.textContent='✅ Terhubung ke Google Colab SQLite! Mengambil data terbaru... ('+(h.counts?.accounts||0)+' akun, '+(h.counts?.submissions||0)+' kiriman)';
-          await SharedCatalog.pull();
-          await Activity.pull();
-          emitSync();
-          setTimeout(()=>FEATURES.pengaturan.render(b), 600);
-        }catch(err){
-          msgEl.textContent='⚠️ URL disimpan, namun server belum merespons: '+(err.message||err);
-        }
-      };
-      const copyBtn=b.querySelector('#cfgCopyLink');
-      if(copyBtn){
-        copyBtn.onclick=async()=>{
-          try{
-            await navigator.clipboard.writeText(shareUrl);
-            b.querySelector('#cfgMsg').textContent='✅ Link auto-connect siswa disalin! Bagikan link ini agar siswa otomatis terhubung ke Colab.';
-          }catch(_){
-            prompt('Salin link ini untuk dibagikan ke siswa:', shareUrl);
-          }
+
+        // Tab 2: Kelola Modul & Fungsi (Tambah / Kurangi fitur & sub-fungsi)
+        pane.innerHTML=`
+          <div class="fp-card" style="margin-bottom:14px">
+            <h4>➕ Tambah Fitur Baru ke Portal</h4>
+            <p style="margin-bottom:10px">Buat modul atau pintasan alat belajar baru yang langsung tampil di sidebar guru &amp; siswa.</p>
+            <div style="display:grid;gap:8px">
+              <div class="fp-row">
+                <input class="fp-input" id="cmIco" value="🚀" placeholder="Ikon" style="width:70px;text-align:center"/>
+                <input class="fp-input" id="cmTitle" placeholder="Nama fitur baru (mis. Lab Virtual / Simulasi Python)" style="flex:1;min-width:200px"/>
+                <select class="fp-select" id="cmTarget" style="width:140px"><option value="all">Guru &amp; Siswa</option><option value="guru">Khusus Guru</option><option value="murid">Khusus Siswa</option></select>
+              </div>
+              <input class="fp-input" id="cmUrl" placeholder="Link / URL Embed eksternal (opsional, mis. https://trinket.io/python atau Google Form)"/>
+              <textarea class="fp-textarea" id="cmDesc" placeholder="Deskripsi / panduan penggunaan fitur..."></textarea>
+              <div><button class="fp-btn sm" id="cmCreate">➕ Tambah Fitur ke Sidebar</button></div>
+            </div>
+          </div>
+          ${cfg.customModules.length?`<div class="fp-card" style="margin-bottom:14px">
+            <h4>📦 Fitur Tambahan Aktif (${cfg.customModules.length})</h4>
+            <div class="fp-list" style="margin-top:8px">${cfg.customModules.map((m,i)=>`
+              <div class="fp-item">
+                <div><div class="t">${esc(m.ico||'✨')} ${esc(m.title)}</div><div class="m">Target: ${esc(m.target)} ${m.url?'· '+esc(m.url):''}</div></div>
+                <button class="fp-btn sm danger" data-del-cm="${i}">Hapus Fitur</button>
+              </div>`).join('')}</div>
+          </div>`:''}
+          <div class="fp-grid c2">
+            <div class="fp-card">
+              <h4>🧩 Aktif / Nonaktifkan Menu Fitur</h4>
+              <p style="margin-bottom:10px">Hilangkan atau munculkan kembali fitur dari sidebar.</p>
+              <div style="display:grid;gap:8px">
+                ${MODULE_DEFS.map(m => {
+                  const on = !cfg.disabled.includes(m.id);
+                  return `<label class="fp-chk"><input type="checkbox" data-mod="${m.id}" ${on?'checked':''}/> <span>${m.ico} <b>${m.name}</b> <small style="color:#64748b">(${m.who})</small></span></label>`;
+                }).join('')}
+              </div>
+            </div>
+            <div class="fp-card">
+              <h4>⚙️ Aktif / Nonaktifkan Sub-Fungsi Fitur</h4>
+              <p style="margin-bottom:10px">Atur fungsi detail di dalam masing-masing panel.</p>
+              <div style="display:grid;gap:10px">
+                ${SUB_FLAGS_DEF.map(f => {
+                  const on = cfg.subFlags[f.id] !== false;
+                  return `<label class="fp-chk"><input type="checkbox" data-subf="${f.id}" ${on?'checked':''}/> <span>${esc(f.label)}</span></label>`;
+                }).join('')}
+              </div>
+            </div>
+          </div>`;
+
+        pane.querySelectorAll('[data-mod]').forEach(cb=>cb.onchange=()=>{
+          const id=cb.dataset.mod;
+          const idx=cfg.disabled.indexOf(id);
+          if(cb.checked && idx>=0) cfg.disabled.splice(idx,1);
+          else if(!cb.checked && idx<0) cfg.disabled.push(id);
+          FeatureConfig.save(cfg); Guard.notify((cb.checked?'Mengaktifkan':'Menonaktifkan')+' fitur '+id);
+        });
+        pane.querySelectorAll('[data-subf]').forEach(cb=>cb.onchange=()=>{
+          cfg.subFlags[cb.dataset.subf] = cb.checked;
+          FeatureConfig.save(cfg); Guard.notify('Pengaturan fungsi diperbarui ✓');
+        });
+        pane.querySelector('#cmCreate').onclick=()=>{
+          const title=pane.querySelector('#cmTitle').value.trim(); if(!title) return alert('Nama fitur wajib diisi.');
+          const id=title.toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,24)+'-'+Date.now().toString(36).slice(-3);
+          cfg.customModules.push({id, ico:pane.querySelector('#cmIco').value.trim()||'🚀', title, url:pane.querySelector('#cmUrl').value.trim(), desc:pane.querySelector('#cmDesc').value.trim(), target:pane.querySelector('#cmTarget').value});
+          FeatureConfig.save(cfg); Guard.notify('Fitur baru "' + title + '" ditambahkan ke sidebar!'); draw();
         };
-      }
-      b.querySelector('#cfgSync').onclick=async()=>{
-        if(typeof window.runMigration==='function'){
-          b.querySelector('#cfgMsg').textContent='⏳ Mengirim semua data lokal ke Google Colab SQLite...';
-          const res=await window.runMigration({force:true});
-          if(res&&res.ok){
-            b.querySelector('#cfgMsg').textContent='✅ Migrasi selesai! Semua data kini tersimpan di Google Colab & Google Drive.';
-            await SharedCatalog.pull();
-            await Activity.pull();
-            emitSync();
-          }else{
-            b.querySelector('#cfgMsg').textContent='⚠️ Migrasi gagal: '+((res&&res.error)||'Pastikan URL & passphrase guru benar.');
-          }
-        }
+        pane.querySelectorAll('[data-del-cm]').forEach(btn=>btn.onclick=()=>{
+          if(!confirm('Hapus fitur tambahan ini?')) return;
+          cfg.customModules.splice(+btn.dataset.delCm,1);
+          FeatureConfig.save(cfg); Guard.notify('Fitur dihapus.'); draw();
+        });
       };
+      draw();
     }
   };
+  FEATURES.modul = { ico:'🧩', title:'Tambah / Kurangi Fitur', sub:'Atur modul portal & tambah fitur baru', render(b){ FEATURES.pengaturan.render(b, {tab:'modul'}); } };
 
   const SKILLS_CATALOG = [
     {
@@ -1995,11 +2292,16 @@
   ];
 
   FEATURES.skill = {
-    ico:'⚡', title:'Skill & Kompetensi Digital', sub:'Peta penguasaan Informatika & KKA, latihan skill cepat, dan lencana keahlian siswa',
+    ico:'⚡', title:'Skill & Kompetensi Digital', sub:'Peta penguasaan Informatika & KKA, tambah/hapus skill, latihan cepat, dan lencana siswa',
     render(b){
       const PRACTICE_KEY = 'pb.skill.practice.v1';
       const readPractice = () => LS.get(PRACTICE_KEY, {}) || {};
       const endorseMap = () => Activity.absensi.get('__SKILLS__', 'endorse') || {};
+      const cfg = FeatureConfig.get();
+      const skillList = Array.isArray(cfg.customSkills) ? cfg.customSkills.slice() : SKILLS_CATALOG.map(s=>({...s}));
+      const saveSkills = next => { const c = FeatureConfig.get(); c.customSkills = next; FeatureConfig.save(c); };
+      const pracAllowed = FeatureConfig.subEnabled('skill_practice');
+      const endAllowed = FeatureConfig.subEnabled('skill_endorse');
       const act = Activity.local();
       const myNis = localStorage.getItem('pb.murid.nis') || '';
       const myName = localStorage.getItem('pb.murid.nama') || 'Siswa';
@@ -2023,7 +2325,7 @@
         const myPrac = nis === myNis ? practice : {};
         const myEnd = endorsed[nis] || [];
 
-        return SKILLS_CATALOG.map((sk, idx) => {
+        return skillList.map((sk, idx) => {
           const pracBonus = myPrac[sk.id] ? 35 : 0;
           const endBonus = myEnd.includes(sk.id) ? 25 : 0;
           const base = sk.id==='game'
@@ -2037,7 +2339,7 @@
         const accounts = (LS.get('pb.cached.accounts', []) || []).concat(DEFAULT_ACCOUNTS.filter(d => !(LS.get('pb.cached.accounts', [])||[]).some(a=>a.nis===d.nis)));
         const selCls = this._cls || 'ALL';
         const visible = selCls==='ALL' ? accounts : accounts.filter(a=>canonicalClass(a.kelas)===selCls);
-        const avgSkills = SKILLS_CATALOG.map(sk => {
+        const avgSkills = skillList.map(sk => {
           if(!visible.length) return { ...sk, avg: 0 };
           const sum = visible.reduce((acc, a) => {
             const st = computeStudentSkills(a.nis, a.nama, a.kelas).find(x=>x.id===sk.id);
@@ -2047,25 +2349,45 @@
         });
 
         b.innerHTML = `
-          <div class="fp-row" style="justify-content:space-between;margin-bottom:16px">
+          <div class="fp-row" style="justify-content:space-between;margin-bottom:14px">
             <div class="fp-row" style="gap:8px">
               <label class="fp-label" style="margin:0">Filter Kelas:</label>
               <select class="fp-select" id="skCls" style="width:auto">${classOptionsHtml(selCls)}</select>
             </div>
-            <span class="fp-badge info">📊 ${visible.length} siswa dipantau</span>
+            <div class="fp-row" style="gap:8px">
+              <button type="button" class="fp-btn sm" id="skToggleAdd">➕ Tambah Skill Baru</button>
+              <span class="fp-badge info">📊 ${visible.length} siswa</span>
+            </div>
+          </div>
+          <div id="skAddBox" class="fp-card" style="display:none;margin-bottom:16px">
+            <h4>➕ Tambah Kompetensi Skill Baru</h4>
+            <div style="display:grid;gap:8px;margin-top:8px">
+              <div class="fp-row">
+                <input class="fp-input" id="skIco" value="💡" style="width:65px;text-align:center"/>
+                <input class="fp-input" id="skTitle" placeholder="Nama Skill (mis. Desain UI/UX)" style="flex:1;min-width:180px"/>
+                <input class="fp-input" id="skMapel" placeholder="Mapel (Informatika / KKA)" style="width:180px"/>
+              </div>
+              <input class="fp-input" id="skDesc" placeholder="Deskripsi kompetensi..."/>
+              <input class="fp-input" id="skQ" placeholder="Pertanyaan tantangan mini (untuk asah skill siswa)"/>
+              <input class="fp-input" id="skOpts" placeholder="4 opsi jawaban dipisah | (Opsi Benar pertama, mis: Wireframe | Compiler | Router | BIOS)"/>
+              <div><button type="button" class="fp-btn sm" id="skCreate">💾 Simpan Skill</button></div>
+            </div>
           </div>
           <div class="fp-grid c3" style="margin-bottom:18px">
-            ${avgSkills.map(sk => `
+            ${avgSkills.map((sk, idx) => `
               <div class="fp-card">
                 <div class="fp-row" style="justify-content:space-between">
-                  <h4>${sk.ico} ${esc(sk.title)}</h4>
-                  <span class="fp-badge ${levelOf(sk.avg).cls}">${sk.avg}%</span>
+                  <h4>${esc(sk.ico)} ${esc(sk.title)}</h4>
+                  <div class="fp-row" style="gap:4px">
+                    <span class="fp-badge ${levelOf(sk.avg).cls}">${sk.avg}%</span>
+                    <button type="button" class="fp-btn sm danger" data-del-sk="${idx}" title="Hapus skill">×</button>
+                  </div>
                 </div>
                 <p>${esc(sk.desc)}</p>
                 <div class="fp-sbar"><div class="fp-sfill" style="width:${sk.avg}%"></div></div>
               </div>`).join('')}
           </div>
-          <div class="fp-card">
+          ${endAllowed?`<div class="fp-card">
             <h4>🏅 Beri Lencana Keahlian Siswa</h4>
             <p style="margin-bottom:12px">Klik lencana untuk memberi/mencabut penghargaan skill ke siswa (tersinkron otomatis ke database Colab &amp; dashboard siswa).</p>
             <div style="overflow:auto">
@@ -2077,17 +2399,32 @@
                     return `<tr>
                       <td><b>${esc(a.nama)}</b><div style="font-size:11px;color:#64748b">NIS ${esc(a.nis)}</div></td>
                       <td>${esc(canonicalClass(a.kelas))}</td>
-                      <td><div class="fp-row" style="gap:6px">${SKILLS_CATALOG.map(sk => {
+                      <td><div class="fp-row" style="gap:6px">${skillList.map(sk => {
                         const on = list.includes(sk.id);
-                        return `<button type="button" class="fp-btn sm ${on?'':'ghost'}" data-end-nis="${esc(a.nis)}" data-end-sk="${sk.id}" title="${esc(sk.title)}">${sk.ico} ${on?'✓':''}</button>`;
+                        return `<button type="button" class="fp-btn sm ${on?'':'ghost'}" data-end-nis="${esc(a.nis)}" data-end-sk="${sk.id}" title="${esc(sk.title)}">${esc(sk.ico)} ${on?'✓':''}</button>`;
                       }).join('')}</div></td>
                     </tr>`;
                   }).join('')}
                 </tbody>
               </table>
             </div>
-          </div>`;
+          </div>`:''}`;
         b.querySelector('#skCls').onchange = e => { this._cls = e.target.value; FEATURES.skill.render(b); };
+        b.querySelector('#skToggleAdd').onclick = () => { const box=b.querySelector('#skAddBox'); box.style.display=box.style.display==='none'?'block':'none'; };
+        b.querySelector('#skCreate').onclick = () => {
+          const title=b.querySelector('#skTitle').value.trim(); if(!title) return alert('Nama skill wajib diisi.');
+          const q=b.querySelector('#skQ').value.trim() || ('Konsep utama pada ' + title + ' bertujuan untuk?');
+          const optsRaw=b.querySelector('#skOpts').value.split('|').map(x=>x.trim()).filter(Boolean);
+          const opts=optsRaw.length>=2 ? optsRaw.concat(['-','-','-','-']).slice(0,4) : ['Meningkatkan ketepatan & efisiensi','Mengabaikan data','Mengacak kode tanpa rencana','Menghapus file'];
+          const id=title.toLowerCase().replace(/[^a-z0-9]+/g,'_').slice(0,16)+'_'+Date.now().toString(36).slice(-3);
+          skillList.push({id, ico:b.querySelector('#skIco').value.trim()||'💡', title, mapel:b.querySelector('#skMapel').value.trim()||'Informatika', desc:b.querySelector('#skDesc').value.trim()||'Kompetensi tambahan dari guru.', challenge:{q, opts, a:0}});
+          saveSkills(skillList); Guard.notify('Skill baru ditambahkan ✓'); FEATURES.skill.render(b);
+        };
+        b.querySelectorAll('[data-del-sk]').forEach(btn=>btn.onclick=()=>{
+          if(skillList.length<=1) return alert('Minimal sisakan 1 skill aktif.');
+          if(!confirm('Hapus skill ini dari portal?')) return;
+          skillList.splice(+btn.dataset.delSk,1); saveSkills(skillList); FEATURES.skill.render(b);
+        });
         b.querySelectorAll('[data-end-nis]').forEach(btn => {
           btn.onclick = () => {
             const nis = btn.dataset.endNis, skId = btn.dataset.endSk;
@@ -2105,7 +2442,7 @@
       }
 
       const mySkills = computeStudentSkills(myNis, myName, myCls);
-      const overall = Math.round(mySkills.reduce((a,s)=>a+s.pct,0)/mySkills.length);
+      const overall = mySkills.length ? Math.round(mySkills.reduce((a,s)=>a+s.pct,0)/mySkills.length) : 0;
       const badgeCount = mySkills.filter(s=>s.badge || s.pct>=75).length;
 
       b.innerHTML = `
@@ -2119,7 +2456,7 @@
             <div class="fp-card">
               <div class="fp-row" style="justify-content:space-between;align-items:flex-start">
                 <div>
-                  <h4>${sk.ico} ${esc(sk.title)}</h4>
+                  <h4>${esc(sk.ico)} ${esc(sk.title)}</h4>
                   <div style="font-size:11.5px;color:#64748b">${esc(sk.mapel)}${sk.badge?' · 🏅 Diakui Guru':''}</div>
                 </div>
                 <span class="fp-badge ${sk.level.cls}">${sk.level.lbl} (${sk.pct}%)</span>
@@ -2127,7 +2464,7 @@
               <p style="margin-top:8px">${esc(sk.desc)}</p>
               <div class="fp-sbar"><div class="fp-sfill" style="width:${sk.pct}%"></div></div>
               <div class="fp-row" style="margin-top:12px;justify-content:space-between">
-                <button type="button" class="fp-btn sm ${sk.practiced?'ghost':''}" data-prac="${sk.id}">${sk.practiced?'✓ Latihan Lulus (+35%)':'🎯 Asah Skill Cepat'}</button>
+                ${pracAllowed?`<button type="button" class="fp-btn sm ${sk.practiced?'ghost':''}" data-prac="${sk.id}">${sk.practiced?'✓ Latihan Lulus (+35%)':'🎯 Asah Skill Cepat'}</button>`:''}
                 <a href="/game-quiz.html" class="fp-btn sm ghost" style="text-decoration:none">🎮 Main Quiz</a>
               </div>
             </div>`).join('')}
@@ -2136,12 +2473,12 @@
 
       b.querySelectorAll('[data-prac]').forEach(btn => {
         btn.onclick = () => {
-          const sk = SKILLS_CATALOG.find(x=>x.id===btn.dataset.prac);
+          const sk = skillList.find(x=>x.id===btn.dataset.prac);
           if(!sk) return;
           const box = b.querySelector('#skPracticeBox');
           box.innerHTML = `
             <div class="fp-card" style="border-color:#4f46e5">
-              <h4>🎯 Tantangan Mini: ${sk.ico} ${esc(sk.title)}</h4>
+              <h4>🎯 Tantangan Mini: ${esc(sk.ico)} ${esc(sk.title)}</h4>
               <p style="margin:6px 0 12px;font-weight:600">${esc(sk.challenge.q)}</p>
               <div class="fp-grid c2" style="gap:8px">
                 ${sk.challenge.opts.map((opt, idx) => `<button type="button" class="fp-btn ghost" data-opt="${idx}" style="justify-content:flex-start">${'ABCD'[idx]}. ${esc(opt)}</button>`).join('')}
@@ -2172,35 +2509,49 @@
   };
 
   FEATURES.ai = {
-    ico:'✨', title:'AI Assistant', sub:'Bantuan pintar untuk pembelajaran',
+    ico:'✨', title:'AI Assistant', sub:'Bantuan pintar terhubung ke materi, tugas, jadwal & skill kelas',
     render(b){
-      b.innerHTML=`<div class="fp-chat" id="cc"></div>
-      <div class="fp-row"><input class="fp-input" id="ai" placeholder="Tanyakan sesuatu..." style="flex:1"/>
-      <button class="fp-btn" id="asend">Kirim</button></div>
-      <div class="fp-row" style="margin-top:10px;gap:6px">
-        <button class="fp-btn sm ghost" data-p="Buatkan 5 soal PG tentang algoritma">Soal Algoritma</button>
-        <button class="fp-btn sm ghost" data-p="Ringkas materi jaringan komputer">Ringkas Materi</button>
-        <button class="fp-btn sm ghost" data-p="Ide proyek untuk siswa SMA">Ide Proyek</button>
-      </div>`;
-      const cc=b.querySelector('#cc');
-      const add=(t,r)=>{const d=document.createElement('div');d.className='fp-msg '+r;d.textContent=t;cc.appendChild(d);cc.scrollTop=cc.scrollHeight;};
-      add('Halo! Saya AI Assistant Portal Belajar. Ada yang bisa saya bantu?','a');
-      const reply=q=>{
-        const l=q.toLowerCase();
-        const myCls=ROLE==='murid'?getMyClass():'ALL';
-        const mats=(LS.get('pb.guru.materi',[])||[]).filter(m=>ROLE!=='murid'||matchesClass(m.k,myCls));
-        const tugs=(LS.get('pb.guru.tugas',[])||[]).filter(t=>ROLE!=='murid'||matchesClass(t.k,myCls));
-        if(l.includes('materi')&&!l.includes('ringkas')) return mats.length ? 'Materi tersedia ('+mats.length+'):\n• '+mats.slice(0,6).map(m=>`${m.j} (${m.mapel||'Umum'} · ${m.k})`).join('\n• ') : 'Belum ada materi yang diterbitkan.';
-        if(l.includes('tugas')||l.includes('deadline')) return tugs.length ? 'Daftar tugas aktif ('+tugs.length+'):\n• '+tugs.slice(0,5).map(t=>`${t.j} — Deadline ${t.d||'TBD'}`).join('\n• ') : 'Belum ada tugas aktif.';
-        if(l.includes('soal'))return'Berikut contoh soal:\n1) Apa itu algoritma?\n2) Sebutkan struktur kontrol dasar.\n3) Jelaskan perbedaan variabel dan konstanta.\n4) Apa fungsi looping?\n5) Berikan contoh percabangan.';
-        if(l.includes('ringkas'))return'Ringkasan: Jaringan komputer adalah kumpulan perangkat yang terhubung untuk berbagi sumber daya (LAN, MAN, WAN, TCP/IP). Berpikir komputasional terdiri dari Dekomposisi, Pengenalan Pola, Abstraksi, dan Algoritma.';
-        if(l.includes('proyek')||l.includes('ide'))return'Ide proyek:\n• Aplikasi absensi kelas berbasis QR\n• Web katalog perpustakaan\n• Chatbot info sekolah\n• Game edukasi Python & Teachable Machine';
-        return`Saya AI Assistant Portal Belajar (terhubung dengan ${mats.length} materi & ${tugs.length} tugas). Coba tanyakan "daftar materi", "tugas aktif", "soal algoritma", atau "ide proyek"!`;
+      const cfg = FeatureConfig.get();
+      const prompts = Array.isArray(cfg.aiPrompts) ? cfg.aiPrompts.slice() : [
+        'Daftar materi aktif', 'Daftar tugas & deadline', 'Info jadwal kelas', 'Ringkas materi jaringan komputer', 'Ide proyek untuk siswa SMA'
+      ];
+      const aiCust = ROLE==='guru' && FeatureConfig.subEnabled('ai_custom');
+      const draw = ()=>{
+        b.innerHTML=`<div class="fp-chat" id="cc"></div>
+        <div class="fp-row"><input class="fp-input" id="ai" placeholder="Tanyakan tentang materi, tugas, jadwal, atau soal..." style="flex:1"/>
+        <button class="fp-btn" id="asend">Kirim</button></div>
+        <div class="fp-row" style="margin-top:10px;gap:6px;flex-wrap:wrap">
+          ${prompts.map((p,i)=>`<span style="display:inline-flex;align-items:center;gap:2px"><button class="fp-btn sm ghost" data-p="${esc(p)}">${esc(p)}</button>${aiCust?`<button class="fp-btn sm danger" data-dp="${i}" style="padding:4px 7px">×</button>`:''}</span>`).join('')}
+          ${aiCust?`<button class="fp-btn sm" id="aiAddP">+ Tambah Prompt</button>`:''}
+        </div>`;
+        const cc=b.querySelector('#cc');
+        const add=(t,r)=>{const d=document.createElement('div');d.className='fp-msg '+r;d.textContent=t;cc.appendChild(d);cc.scrollTop=cc.scrollHeight;};
+        add('Halo! Saya AI Assistant Portal Belajar. Tanya saja soal materi, tugas, jadwal, skill, atau latihan soal!','a');
+        const reply=q=>{
+          const l=q.toLowerCase();
+          const myCls=ROLE==='murid'?getMyClass():'ALL';
+          const mats=(LS.get('pb.guru.materi',[])||[]).filter(m=>ROLE!=='murid'||matchesClass(m.k,myCls));
+          const tugs=(LS.get('pb.guru.tugas',[])||[]).filter(t=>ROLE!=='murid'||matchesClass(t.k,myCls));
+          const jd=(Array.isArray(cfg.jadwal)?cfg.jadwal:DEFAULT_SCHEDULE).filter(r=>ROLE!=='murid'||matchesClass(r.kelas,myCls));
+          if(l.includes('jadwal')) return jd.length ? 'Jadwal aktif:\n• '+jd.map(r=>`${r.hari} ${r.jam} — ${r.mapel} (${r.kelas}, ${r.ruang||'-'})`).join('\n• ') : 'Belum ada jadwal tercatat.';
+          if(l.includes('materi')&&!l.includes('ringkas')) return mats.length ? 'Materi tersedia ('+mats.length+'):\n• '+mats.slice(0,6).map(m=>`${m.j} (${m.mapel||'Umum'} · ${m.k})`).join('\n• ') : 'Belum ada materi yang diterbitkan.';
+          if(l.includes('tugas')||l.includes('deadline')) return tugs.length ? 'Daftar tugas aktif ('+tugs.length+'):\n• '+tugs.slice(0,5).map(t=>`${t.j} — Deadline ${t.d||'TBD'}`).join('\n• ') : 'Belum ada tugas aktif.';
+          if(l.includes('soal'))return'Berikut contoh latihan:\n1) Apa itu dekomposisi dalam berpikir komputasional?\n2) Kapan memakai if/else vs loop for?\n3) Sebutkan perbedaan supervised & unsupervised learning!';
+          if(l.includes('ringkas'))return'Ringkasan: Jaringan menghubungkan perangkat via TCP/IP & HTTPS. Berpikir komputasional memakai Dekomposisi, Pengenalan Pola, Abstraksi, dan Algoritma.';
+          if(l.includes('proyek')||l.includes('ide'))return'Ide proyek:\n• Chatbot info kelas dengan Python\n• Dashboard absensi QR\n• Klasifikasi gambar sampah memakai Google Teachable Machine';
+          return`Terhubung dengan ${mats.length} materi, ${tugs.length} tugas, & ${jd.length} jadwal kelas. Coba tanyakan "daftar materi", "daftar tugas", atau "info jadwal"!`;
+        };
+        const send=()=>{const i=b.querySelector('#ai'),v=i.value.trim();if(!v)return;add(v,'u');i.value='';setTimeout(()=>add(reply(v),'a'),320);};
+        b.querySelector('#asend').onclick=send;
+        b.querySelector('#ai').addEventListener('keydown',e=>{if(e.key==='Enter')send();});
+        b.querySelectorAll('[data-p]').forEach(x=>x.onclick=()=>{b.querySelector('#ai').value=x.dataset.p;send();});
+        if(aiCust){
+          const addB=b.querySelector('#aiAddP');
+          if(addB) addB.onclick=()=>{const np=prompt('Tulis teks prompt cepat baru:');if(!np||!np.trim())return;prompts.push(np.trim());const c=FeatureConfig.get();c.aiPrompts=prompts;FeatureConfig.save(c);draw();};
+          b.querySelectorAll('[data-dp]').forEach(x=>x.onclick=()=>{prompts.splice(+x.dataset.dp,1);const c=FeatureConfig.get();c.aiPrompts=prompts;FeatureConfig.save(c);draw();});
+        }
       };
-      const send=()=>{const i=b.querySelector('#ai'),v=i.value.trim();if(!v)return;add(v,'u');i.value='';setTimeout(()=>add(reply(v),'a'),400);};
-      b.querySelector('#asend').onclick=send;
-      b.querySelector('#ai').addEventListener('keydown',e=>{if(e.key==='Enter')send();});
-      b.querySelectorAll('[data-p]').forEach(x=>x.onclick=()=>{b.querySelector('#ai').value=x.dataset.p;send();});
+      draw();
     }
   };
 
@@ -2214,7 +2565,7 @@
       const save = ()=>{ LS.set(key, items); SharedCatalog.publish({silent:true}); };
       const draw = ()=>{
         const formHtml = ROLE==='guru' ? `
-          <div style="display:grid;gap:8px;margin-bottom:14px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px">
+          <div class="fp-card" style="display:grid;gap:8px;margin-bottom:14px">
             <div class="fp-row">
               <input class="fp-input" id="pj" placeholder="Judul pengumuman..." style="flex:1;min-width:200px"/>
               <input class="fp-input" id="ptgl" type="date" value="${new Date().toISOString().slice(0,10)}" style="width:155px"/>
@@ -2229,9 +2580,9 @@
             <div class="t">${esc(x.j||x.t||'Pengumuman')}</div>
             <div class="m" style="line-height:1.5">${esc(x.isi||x.m||'')}</div>
           </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;flex-wrap:wrap">
             <span class="fp-badge info">${esc(x.tgl||x.d||'Terbaru')}</span>
-            ${ROLE==='guru'?`<button class="fp-btn sm danger" data-pd="${i}">Hapus</button>`:''}
+            ${ROLE==='guru'?`<button class="fp-btn sm ghost" data-pe="${i}">✏️ Edit</button><button class="fp-btn sm danger" data-pd="${i}">Hapus</button>`:''}
           </div>
         </div>`).join('')||'<div class="fp-empty">Belum ada pengumuman.</div>'}</div>`;
         if(ROLE==='guru'){
@@ -2243,6 +2594,13 @@
             if(!j || !isi) return alert('Judul dan isi pengumuman wajib diisi.');
             items.unshift({j, tgl, isi}); save(); draw();
           };
+          b.querySelectorAll('[data-pe]').forEach(btn=>btn.onclick=()=>{
+            const x=items[+btn.dataset.pe];
+            const nj=prompt('Edit judul:', x.j||x.t||''); if(nj===null) return;
+            const nisi=prompt('Edit isi:', x.isi||x.m||''); if(nisi===null) return;
+            if(nj.trim()) x.j=nj.trim();
+            x.isi=nisi.trim(); save(); draw();
+          });
           b.querySelectorAll('[data-pd]').forEach(btn=>btn.onclick=()=>{
             if(confirm('Hapus pengumuman ini?')){ items.splice(+btn.dataset.pd,1); save(); draw(); }
           });
@@ -2253,23 +2611,18 @@
   };
 
   FEATURES.jadwal_murid = {
-    ico:'J', title:'Jadwal Pelajaran', sub:'Jadwal Informatika & KKA kamu',
+    ico:'📅', title:'Jadwal Pelajaran', sub:'Jadwal pelajaran yang diterbitkan guru untuk kelasmu',
     render(b){
       const myClass = getMyClass();
-      const info = CLASS_CATALOG.find(c=>c.n===myClass);
-      const mapel = info ? info.mapel : [];
-      const slot = {
-        'Informatika':[['Senin','07:30','Lab Kom'],['Rabu','07:30','Lab Kom']],
-        'KKA':[['Selasa','09:15','R.104'],['Kamis','09:15','R.104']]
-      };
-      const j=[];
-      mapel.forEach(m=>(slot[m]||[]).forEach(s=>j.push([s[0],s[1],m,s[2]])));
-      if(!j.length){
-        b.innerHTML=`<div class="fp-empty">Belum ada jadwal untuk kelas kamu.</div>`;
+      const cfg = FeatureConfig.get();
+      const all = Array.isArray(cfg.jadwal) ? cfg.jadwal : DEFAULT_SCHEDULE;
+      const rows = all.filter(r => !r.kelas || matchesClass(r.kelas, myClass));
+      if(!rows.length){
+        b.innerHTML=`<div class="fp-empty">Belum ada jadwal untuk kelas ${esc(myClass||'-')}.</div>`;
         return;
       }
       b.innerHTML=`<table class="fp-table"><thead><tr><th>Hari</th><th>Jam</th><th>Mapel</th><th>Ruang</th></tr></thead>
-      <tbody>${j.map(r=>`<tr><td><b>${r[0]}</b></td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td></tr>`).join('')}</tbody></table>`;
+      <tbody>${rows.map(r=>`<tr><td><b>${esc(r.hari)}</b></td><td>${esc(r.jam)}</td><td><span class="fp-badge info">${esc(r.mapel)}</span></td><td>${esc(r.ruang||'-')}</td></tr>`).join('')}</tbody></table>`;
     }
   };
 
@@ -2474,6 +2827,7 @@
         else if(t.startsWith('progres saya')) feat='progres_saya';
         else if(t.startsWith('progres siswa')) feat='progres';
         else if(t.startsWith('skill')) feat='skill';
+        else if(t.startsWith('kelola fitur')) feat='modul';
         if(feat) el.dataset.feature=feat;
       }
       el.style.cursor='pointer';
@@ -2497,12 +2851,15 @@
       const mc0 = getMyClass();
       if(!mc0 || !ALL_CLASSES.includes(mc0)){ setMyClass(null); showClassGate(); }
       else guardDeepLink(mc0);
+      Promise.all([SharedCatalog.pull(), Activity.pull()]).then(()=>FeatureConfig.applySidebarConfig());
     } else {
       // Migrasikan publikasi lama dan kirim katalog ke penyimpanan bersama saat
       // guru membuka dashboard, tanpa harus mengedit ulang setiap materi/tugas.
       SharedCatalog.pull();
+      Activity.pull().then(()=>FeatureConfig.applySidebarConfig());
       SubAlerts.start();
     }
+    FeatureConfig.applySidebarConfig();
 
     // Tampilkan indikator kelas di header/sidebar bila ada
     if(ROLE==='murid'){
