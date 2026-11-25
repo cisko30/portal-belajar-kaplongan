@@ -2215,162 +2215,73 @@
   };
 
   FEATURES.pengaturan = {
-    ico:'⚙️', title:'Pengaturan & Kelola Fitur', sub:'Koneksi Google Colab SQLite serta tambah/kurangi fitur dan sub-fungsi aplikasi',
-    render(b, opts){
+    ico:'⚙️', title:'Database Google Colab & Sinkronisasi', sub:'Hubungkan Google Colab SQLite + Google Drive, bagikan link siswa, dan migrasikan data',
+    render(b){
       const colabUrl = window.colabDb ? window.colabDb.getUrl() : '';
       const ready = window.colabDb && window.colabDb.isReady();
       const migrated = localStorage.getItem('pb.migrated.colab.v1') === 'done';
       const shareUrl = colabUrl ? (location.origin + '/?colab=' + encodeURIComponent(colabUrl)) : '';
-      let activeTab = (opts && opts.tab) || this._tab || 'colab';
-      this._tab = activeTab;
-      const cfg = FeatureConfig.get();
-
-      const draw = ()=>{
-        b.innerHTML=`
-          <div class="fp-tabs">
-            <div class="fp-tab ${activeTab==='colab'?'on':''}" data-tab="colab">⚙️ Database Google Colab</div>
-            <div class="fp-tab ${activeTab==='modul'?'on':''}" data-tab="modul">🧩 Tambah / Kurangi Fitur (${cfg.customModules.length} kustom)</div>
+      b.innerHTML=`
+        <div class="fp-card" style="margin-bottom:14px">
+          <div class="fp-row" style="justify-content:space-between">
+            <div>
+              <h4>Status Database Google Colab SQLite</h4>
+              <p>${ready ? 'Terhubung ke server Google Colab ('+esc(colabUrl)+'). Semua materi, tugas, quiz & nilai tersimpan ke Google Drive.' : 'Mode Lokal (belum dihubungkan ke Google Colab tunnel).'}</p>
+            </div>
+            <span class="fp-badge ${ready?'ok':'warn'}">${ready?'🟢 Colab Terhubung':'🟡 Mode Lokal'}</span>
           </div>
-          <div id="cfgPane"></div>`;
-        b.querySelectorAll('[data-tab]').forEach(t=>t.onclick=()=>{activeTab=t.dataset.tab;this._tab=activeTab;draw();});
-        const pane = b.querySelector('#cfgPane');
-        if(activeTab === 'colab'){
-          pane.innerHTML=`
-            <div class="fp-card" style="margin-bottom:14px">
-              <div class="fp-row" style="justify-content:space-between">
-                <div>
-                  <h4>Status Database Google Colab SQLite</h4>
-                  <p>${ready ? 'Terhubung ke server Google Colab ('+esc(colabUrl)+'). Semua materi, tugas, quiz & nilai tersimpan ke Google Drive.' : 'Mode Lokal (belum dihubungkan ke Google Colab tunnel).'}</p>
-                </div>
-                <span class="fp-badge ${ready?'ok':'warn'}">${ready?'🟢 Colab Terhubung':'🟡 Mode Lokal'}</span>
-              </div>
+        </div>
+        <div class="fp-card" style="margin-bottom:14px">
+          <h4>URL Public Tunnel Google Colab</h4>
+          <p style="font-size:12px;color:#64748b;margin:4px 0 8px">Jalankan notebook <code>colab/portalbelajar_colab_database.ipynb</code> di Google Colab lalu tempel link tunnel (Cloudflare/Ngrok) di bawah ini:</p>
+          <div style="display:grid;gap:10px;margin-top:10px">
+            <div><label class="fp-label">URL Server Colab</label><input class="fp-input" id="cfgUrl" value="${esc(colabUrl)}" placeholder="https://xxxx-xxxx.trycloudflare.com"/></div>
+            <div class="fp-row" style="flex-wrap:wrap;gap:8px">
+              <button class="fp-btn sm" id="cfgSave">💾 Simpan &amp; Uji Koneksi</button>
+              <button class="fp-btn sm ghost" id="cfgSync" ${ready?'':'disabled'}>🔄 Migrasi Data Lokal ke Colab</button>
+              <button class="fp-btn sm ghost" id="cfgCopyLink" ${shareUrl?'':'disabled'}>📋 Salin Link Siswa</button>
             </div>
-            <div class="fp-card" style="margin-bottom:14px">
-              <h4>URL Public Tunnel Google Colab</h4>
-              <p style="font-size:12px;color:#64748b;margin:4px 0 8px">Jalankan notebook <code>colab/portalbelajar_colab_database.ipynb</code> di Google Colab lalu tempel link tunnel (Cloudflare/Ngrok) di bawah ini:</p>
-              <div style="display:grid;gap:10px;margin-top:10px">
-                <div><label class="fp-label">URL Server Colab</label><input class="fp-input" id="cfgUrl" value="${esc(colabUrl)}" placeholder="https://xxxx-xxxx.trycloudflare.com"/></div>
-                <div class="fp-row" style="flex-wrap:wrap;gap:8px">
-                  <button class="fp-btn sm" id="cfgSave">💾 Simpan &amp; Uji Koneksi</button>
-                  <button class="fp-btn sm ghost" id="cfgSync" ${ready?'':'disabled'}>🔄 Migrasi Data Lokal ke Colab</button>
-                  <button class="fp-btn sm ghost" id="cfgCopyLink" ${shareUrl?'':'disabled'}>📋 Salin Link Siswa</button>
-                </div>
-                ${shareUrl ? `<div style="font-size:12px;padding:8px 10px;border-radius:8px;border:1px solid #e2e8f0;word-break:break-all"><b>Link Auto-Connect Siswa:</b> <span id="cfgShareTxt">${esc(shareUrl)}</span></div>` : ''}
-                <div id="cfgMsg" style="font-size:12.5px;color:#475569"></div>
-              </div>
-            </div>
-            <div class="fp-card">
-              <h4>Ringkasan Data Lokal</h4>
-              <p>Materi: <b>${(LS.get(SK('materi'),[])||[]).length}</b> · Tugas: <b>${(LS.get(SK('tugas'),[])||[]).length}</b> · LKPD: <b>${(LS.get(SK('lkpd'),[])||[]).length}</b> · Quiz: <b>${(LS.get(SK('quiz'),[])||[]).length}</b> · Migrasi Colab: <b>${migrated?'Sudah':'Belum'}</b></p>
-            </div>`;
-          pane.querySelector('#cfgSave').onclick=async()=>{
-            const u=pane.querySelector('#cfgUrl').value.trim();
-            const msgEl=pane.querySelector('#cfgMsg');
-            if(!window.colabDb) return;
-            window.colabDb.setUrl(u);
-            if(!u){ msgEl.textContent='URL Google Colab dikosongkan (kembali ke mode lokal).'; FEATURES.pengaturan.render(b); return; }
-            msgEl.textContent='⏳ Menguji koneksi ke Google Colab SQLite...';
-            try{
-              const h=await window.colabDb.testConnection(u);
-              msgEl.textContent='✅ Terhubung ke Google Colab SQLite! Mengambil data terbaru... ('+(h.counts?.accounts||0)+' akun, '+(h.counts?.submissions||0)+' kiriman)';
-              await SharedCatalog.pull(); await Activity.pull(); emitSync();
-              setTimeout(()=>FEATURES.pengaturan.render(b), 600);
-            }catch(err){ msgEl.textContent='⚠️ URL disimpan, namun server belum merespons: '+(err.message||err); }
-          };
-          const copyBtn=pane.querySelector('#cfgCopyLink');
-          if(copyBtn){
-            copyBtn.onclick=async()=>{
-              try{ await navigator.clipboard.writeText(shareUrl); pane.querySelector('#cfgMsg').textContent='✅ Link auto-connect siswa disalin!'; }
-              catch(_){ prompt('Salin link ini untuk dibagikan ke siswa:', shareUrl); }
-            };
-          }
-          pane.querySelector('#cfgSync').onclick=async()=>{
-            if(typeof window.runMigration==='function'){
-              pane.querySelector('#cfgMsg').textContent='⏳ Mengirim semua data lokal ke Google Colab SQLite...';
-              const res=await window.runMigration({force:true});
-              if(res&&res.ok){
-                pane.querySelector('#cfgMsg').textContent='✅ Migrasi selesai! Semua data kini tersimpan di Google Colab & Google Drive.';
-                await SharedCatalog.pull(); await Activity.pull(); emitSync();
-              }else{ pane.querySelector('#cfgMsg').textContent='⚠️ Migrasi gagal: '+((res&&res.error)||'Pastikan URL & passphrase guru benar.'); }
-            }
-          };
-          return;
-        }
-
-        // Tab 2: Kelola Modul & Fungsi (Tambah / Kurangi fitur & sub-fungsi)
-        pane.innerHTML=`
-          <div class="fp-card" style="margin-bottom:14px">
-            <h4>➕ Tambah Fitur Baru ke Portal</h4>
-            <p style="margin-bottom:10px">Buat modul atau pintasan alat belajar baru yang langsung tampil di sidebar guru &amp; siswa.</p>
-            <div style="display:grid;gap:8px">
-              <div class="fp-row">
-                <input class="fp-input" id="cmIco" value="🚀" placeholder="Ikon" style="width:70px;text-align:center"/>
-                <input class="fp-input" id="cmTitle" placeholder="Nama fitur baru (mis. Lab Virtual / Simulasi Python)" style="flex:1;min-width:200px"/>
-                <select class="fp-select" id="cmTarget" style="width:140px"><option value="all">Guru &amp; Siswa</option><option value="guru">Khusus Guru</option><option value="murid">Khusus Siswa</option></select>
-              </div>
-              <input class="fp-input" id="cmUrl" placeholder="Link / URL Embed eksternal (opsional, mis. https://trinket.io/python atau Google Form)"/>
-              <textarea class="fp-textarea" id="cmDesc" placeholder="Deskripsi / panduan penggunaan fitur..."></textarea>
-              <div><button class="fp-btn sm" id="cmCreate">➕ Tambah Fitur ke Sidebar</button></div>
-            </div>
+            ${shareUrl ? `<div style="font-size:12px;padding:8px 10px;border-radius:8px;border:1px solid #e2e8f0;word-break:break-all"><b>Link Auto-Connect Siswa:</b> <span id="cfgShareTxt">${esc(shareUrl)}</span></div>` : ''}
+            <div id="cfgMsg" style="font-size:12.5px;color:#475569"></div>
           </div>
-          ${cfg.customModules.length?`<div class="fp-card" style="margin-bottom:14px">
-            <h4>📦 Fitur Tambahan Aktif (${cfg.customModules.length})</h4>
-            <div class="fp-list" style="margin-top:8px">${cfg.customModules.map((m,i)=>`
-              <div class="fp-item">
-                <div><div class="t">${esc(m.ico||'✨')} ${esc(m.title)}</div><div class="m">Target: ${esc(m.target)} ${m.url?'· '+esc(m.url):''}</div></div>
-                <button class="fp-btn sm danger" data-del-cm="${i}">Hapus Fitur</button>
-              </div>`).join('')}</div>
-          </div>`:''}
-          <div class="fp-grid c2">
-            <div class="fp-card">
-              <h4>🧩 Aktif / Nonaktifkan Menu Fitur</h4>
-              <p style="margin-bottom:10px">Hilangkan atau munculkan kembali fitur dari sidebar.</p>
-              <div style="display:grid;gap:8px">
-                ${MODULE_DEFS.map(m => {
-                  const on = !cfg.disabled.includes(m.id);
-                  return `<label class="fp-chk"><input type="checkbox" data-mod="${m.id}" ${on?'checked':''}/> <span>${m.ico} <b>${m.name}</b> <small style="color:#64748b">(${m.who})</small></span></label>`;
-                }).join('')}
-              </div>
-            </div>
-            <div class="fp-card">
-              <h4>⚙️ Aktif / Nonaktifkan Sub-Fungsi Fitur</h4>
-              <p style="margin-bottom:10px">Atur fungsi detail di dalam masing-masing panel.</p>
-              <div style="display:grid;gap:10px">
-                ${SUB_FLAGS_DEF.map(f => {
-                  const on = cfg.subFlags[f.id] !== false;
-                  return `<label class="fp-chk"><input type="checkbox" data-subf="${f.id}" ${on?'checked':''}/> <span>${esc(f.label)}</span></label>`;
-                }).join('')}
-              </div>
-            </div>
-          </div>`;
-
-        pane.querySelectorAll('[data-mod]').forEach(cb=>cb.onchange=()=>{
-          const id=cb.dataset.mod;
-          const idx=cfg.disabled.indexOf(id);
-          if(cb.checked && idx>=0) cfg.disabled.splice(idx,1);
-          else if(!cb.checked && idx<0) cfg.disabled.push(id);
-          FeatureConfig.save(cfg); Guard.notify((cb.checked?'Mengaktifkan':'Menonaktifkan')+' fitur '+id);
-        });
-        pane.querySelectorAll('[data-subf]').forEach(cb=>cb.onchange=()=>{
-          cfg.subFlags[cb.dataset.subf] = cb.checked;
-          FeatureConfig.save(cfg); Guard.notify('Pengaturan fungsi diperbarui ✓');
-        });
-        pane.querySelector('#cmCreate').onclick=()=>{
-          const title=pane.querySelector('#cmTitle').value.trim(); if(!title) return alert('Nama fitur wajib diisi.');
-          const id=title.toLowerCase().replace(/[^a-z0-9]+/g,'-').slice(0,24)+'-'+Date.now().toString(36).slice(-3);
-          cfg.customModules.push({id, ico:pane.querySelector('#cmIco').value.trim()||'🚀', title, url:pane.querySelector('#cmUrl').value.trim(), desc:pane.querySelector('#cmDesc').value.trim(), target:pane.querySelector('#cmTarget').value});
-          FeatureConfig.save(cfg); Guard.notify('Fitur baru "' + title + '" ditambahkan ke sidebar!'); draw();
-        };
-        pane.querySelectorAll('[data-del-cm]').forEach(btn=>btn.onclick=()=>{
-          if(!confirm('Hapus fitur tambahan ini?')) return;
-          cfg.customModules.splice(+btn.dataset.delCm,1);
-          FeatureConfig.save(cfg); Guard.notify('Fitur dihapus.'); draw();
-        });
+        </div>
+        <div class="fp-card">
+          <h4>Ringkasan Data Lokal</h4>
+          <p>Materi: <b>${(LS.get(SK('materi'),[])||[]).length}</b> · Tugas: <b>${(LS.get(SK('tugas'),[])||[]).length}</b> · LKPD: <b>${(LS.get(SK('lkpd'),[])||[]).length}</b> · Quiz: <b>${(LS.get(SK('quiz'),[])||[]).length}</b> · Migrasi Colab: <b>${migrated?'Sudah':'Belum'}</b></p>
+        </div>`;
+      b.querySelector('#cfgSave').onclick=async()=>{
+        const u=b.querySelector('#cfgUrl').value.trim();
+        const msgEl=b.querySelector('#cfgMsg');
+        if(!window.colabDb) return;
+        window.colabDb.setUrl(u);
+        if(!u){ msgEl.textContent='URL Google Colab dikosongkan (kembali ke mode lokal).'; FEATURES.pengaturan.render(b); return; }
+        msgEl.textContent='⏳ Menguji koneksi ke Google Colab SQLite...';
+        try{
+          const h=await window.colabDb.testConnection(u);
+          msgEl.textContent='✅ Terhubung ke Google Colab SQLite! Mengambil data terbaru... ('+(h.counts?.accounts||0)+' akun, '+(h.counts?.submissions||0)+' kiriman)';
+          await SharedCatalog.pull(); await Activity.pull(); emitSync();
+          setTimeout(()=>FEATURES.pengaturan.render(b), 600);
+        }catch(err){ msgEl.textContent='⚠️ URL disimpan, namun server belum merespons: '+(err.message||err); }
       };
-      draw();
+      const copyBtn=b.querySelector('#cfgCopyLink');
+      if(copyBtn){
+        copyBtn.onclick=async()=>{
+          try{ await navigator.clipboard.writeText(shareUrl); b.querySelector('#cfgMsg').textContent='✅ Link auto-connect siswa disalin!'; }
+          catch(_){ prompt('Salin link ini untuk dibagikan ke siswa:', shareUrl); }
+        };
+      }
+      b.querySelector('#cfgSync').onclick=async()=>{
+        if(typeof window.runMigration==='function'){
+          b.querySelector('#cfgMsg').textContent='⏳ Mengirim semua data lokal ke Google Colab SQLite...';
+          const res=await window.runMigration({force:true});
+          if(res&&res.ok){
+            b.querySelector('#cfgMsg').textContent='✅ Migrasi selesai! Semua data kini tersimpan di Google Colab & Google Drive.';
+            await SharedCatalog.pull(); await Activity.pull(); emitSync();
+          }else{ b.querySelector('#cfgMsg').textContent='⚠️ Migrasi gagal: '+((res&&res.error)||'Pastikan URL & passphrase guru benar.'); }
+        }
+      };
     }
   };
-  FEATURES.modul = { ico:'🧩', title:'Tambah / Kurangi Fitur', sub:'Atur modul portal & tambah fitur baru', render(b){ FEATURES.pengaturan.render(b, {tab:'modul'}); } };
 
   const SKILLS_CATALOG = [
     {
