@@ -74,7 +74,7 @@
   .fp-sfill{height:100%;border-radius:999px;background:linear-gradient(90deg,#4f46e5,#06b6d4);transition:width .35s ease}
   .fp-mpick{position:relative;display:inline-block;min-width:155px}
   .fp-mpick-btn{text-align:left;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:26px}
-  .fp-mpick-pop{display:none;position:absolute;top:calc(100% + 4px);left:0;z-index:10020;min-width:260px;background:#fff;border:1px solid #cbd5e1;border-radius:12px;padding:10px;box-shadow:0 16px 40px rgba(15,23,42,.22)}
+  .fp-mpick-pop{display:none;position:fixed;z-index:10050;width:272px;max-width:calc(100vw - 24px);background:#fff;border:1px solid #cbd5e1;border-radius:14px;padding:12px;box-shadow:0 20px 50px rgba(15,23,42,.28)}
   .fp-mpick.open .fp-mpick-pop{display:block}
   .fp-mpick-pre{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #e2e8f0}
   .fp-mpick-list{display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:210px;overflow-y:auto}
@@ -117,7 +117,19 @@
       const wrap = btn.closest('.fp-mpick');
       const was = wrap.classList.contains('open');
       overlay.querySelectorAll('.fp-mpick.open').forEach(x=>x.classList.remove('open'));
-      if(!was) wrap.classList.add('open');
+      if(!was){
+        wrap.classList.add('open');
+        const pop = wrap.querySelector('.fp-mpick-pop');
+        if(pop){
+          const r = btn.getBoundingClientRect();
+          const ph = pop.offsetHeight || 260;
+          const pw = pop.offsetWidth || 272;
+          const top = (r.bottom + 6 + ph > window.innerHeight - 12 && r.top - ph - 6 > 12) ? (r.top - ph - 6) : Math.min(window.innerHeight - ph - 12, r.bottom + 6);
+          const left = Math.max(12, Math.min(window.innerWidth - pw - 12, r.left));
+          pop.style.top = Math.max(12, top) + 'px';
+          pop.style.left = left + 'px';
+        }
+      }
       return;
     }
     const preBtn = e.target.closest('[data-pre]');
@@ -854,10 +866,12 @@
   FEATURES.materi = {
     ico:'M', title:'Materi Ajar', sub:'Kelola bahan ajar per bab',
     render(b){
-      const key=SK('materi'); let list = LS.get(key, []).map(m=>(m.s==='Draft'&&(m.f||m.l))?{...m,s:'Terbit'}:m);
+      const key=SK('materi');
+      const rawList = LS.get(key, []);
+      let changed=false;
+      let list = rawList.map(m=>{if(m.s==='Draft'&&(m.f||m.l)){changed=true;return{...m,s:'Terbit'};}return m;});
       let subjectFilter='ALL';
-      LS.set(key,list);
-      SharedCatalog.publish();
+      if(changed){ LS.set(key,list); }
       QuizAlerts.startPolling();
 
       const save=()=>{LS.set(key,list);SharedCatalog.publish();};
@@ -959,7 +973,10 @@
           }
           list.splice(i,1);save();draw();
         });
-      }; Drive.ensure().then(()=>{SharedCatalog.publish();draw();}); draw();
+      };
+      SharedCatalog.pull().then(ok=>{if(ok&&b.isConnected){list=LS.get(key,[]);draw();}});
+      Drive.ensure().then(()=>{if(b.isConnected)draw();});
+      draw();
     }
   };
 
@@ -1050,6 +1067,7 @@
     }
     async function publish(opts){
       if(ROLE!=='guru') return;
+      if(pulling) await pulling;
       const silent=opts&&opts.silent;
 
       let p=localStorage.getItem('pb.guru.passphrase')||'';
