@@ -95,6 +95,7 @@ input.in{padding:12px;border-radius:12px;border:0;font:600 15px Nunito;width:100
 .hpbar{height:14px;border-radius:99px;background:#ffffff22;overflow:hidden;margin-top:6px}.hpbar>div{height:100%;transition:width .35s}
 .boss-hit{animation:shake .35s}
 </style></head><body><div class="wrap" id="app"></div>
+<script src="/firebase-client.js"></script>
 <script src="/colab-client.js"></script>
 <script>
 const $=s=>document.querySelector(s), app=$('#app');
@@ -242,6 +243,7 @@ const LIVE_MODE_NAMES={gold:'💰 Gold Rush',balon:'🎈 Balon Pecah',tikus:'�
 const liveLocalKey=pin=>'pb.live.room.'+String(pin||'').trim();
 const isStaffSession=()=>{const r=String(rd('userRole')||'').replace(/^"|"$/g,'').trim();return (r==='guru'||r==='admin')&&!!localStorage.getItem('pb.guru.passphrase');};
 async function liveApi(op, arg1, arg2){
+  if(window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
   const hasColab = window.colabDb && window.colabDb.isReady() && window.colabDb.live;
   if(op==='create'){
     if(hasColab){ try{ return await window.colabDb.live.create(arg1, localStorage.getItem('pb.guru.passphrase')||''); }catch(_){} }

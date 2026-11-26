@@ -1,10 +1,10 @@
 /**
- * Portal Belajar — Google Colab SQLite Migration Utility
- * Migrates localStorage data (materi, tugas, lkpd, quiz, pengumuman, accounts,
- * submissions, attendance, jenjang overrides) into Google Colab SQLite + Google Drive.
+ * Portal Belajar — Cloud Database Migration Utility (Firebase Firestore & Google Colab SQLite)
+ * Migrates all localStorage data (materi, tugas, lkpd, quiz, pengumuman, accounts,
+ * submissions, attendance, kelas, bank soal, modules config, skill practice, topics) to Cloud DB.
  */
 (function () {
-  const MIGRATION_KEY = 'pb.migrated.colab.v1';
+  const MIGRATION_KEY = 'pb.migrated.cloud.v2';
 
   function readJSON(key, fallback) {
     try {
@@ -29,7 +29,6 @@
           }
         }
       }
-      // Also capture legacy pb.murid.sub:* keys if present
       const legacyMap = { tugas: {}, lkpd: {}, quiz: {} };
       let hasLegacy = false;
       for (let i = 0; i < localStorage.length; i++) {
@@ -59,15 +58,33 @@
 
   window.runMigration = async function (opts) {
     opts = opts || {};
-    if (!window.colabDb || !window.colabDb.isReady()) {
-      return { ok: false, skipped: true, reason: 'Google Colab server belum terhubung.' };
+    if (!window.colabDb) {
+      return { ok: false, skipped: true, reason: 'Client database belum dimuat.' };
+    }
+    if (window.colabDb.whenReady) await window.colabDb.whenReady();
+    if (!window.colabDb.isReady()) {
+      return { ok: false, skipped: true, reason: 'Firebase / server cloud belum terhubung.' };
     }
     if (!opts.force && localStorage.getItem(MIGRATION_KEY) === 'done') {
       return { ok: true, alreadyMigrated: true };
     }
 
     const pass = localStorage.getItem('pb.guru.passphrase') || sessionStorage.getItem('guruPass') || sessionStorage.getItem('pb.guru.pass') || '';
+    const tok = window.colabDb.getToken ? window.colabDb.getToken() : (localStorage.getItem('pb.session.token') || '');
+    if (opts.silentIfNoAuth && !pass && !tok) {
+      return { ok: false, skipped: true, reason: 'Belum ada kredensial guru.' };
+    }
+
     const cachedAccounts = readJSON('pb.cached.accounts', null);
+    const absensi = Object.assign({}, readJSON('pb.shared.absensi', {}));
+    const modCfg = Object.assign({}, readJSON('pb.modules.config', {}));
+    const localKelas = readJSON('pb.guru.kelas', null);
+    const localBank = readJSON('pb.guru.bank', null);
+    if (Array.isArray(localKelas) && !Array.isArray(modCfg.kelasList)) modCfg.kelasList = localKelas;
+    if (Array.isArray(localBank) && !Array.isArray(modCfg.bankSoal)) modCfg.bankSoal = localBank;
+    if (Object.keys(modCfg).length > 0) {
+      absensi['__CONFIG__|modules'] = Object.assign({}, absensi['__CONFIG__|modules'] || {}, modCfg);
+    }
 
     const payload = {
       catalog: {
@@ -79,7 +96,8 @@
       },
       accounts: Array.isArray(cachedAccounts) ? cachedAccounts : [],
       submissions: collectSubmissions(),
-      absensi: readJSON('pb.shared.absensi', {}),
+      absensi,
+      modulesConfig: absensi['__CONFIG__|modules'],
       topics: readJSON('jenjangOverrides_v1', {})
     };
 
@@ -87,7 +105,9 @@
       const res = await window.colabDb.migrateAll(payload, pass);
       if (res && res.ok) {
         localStorage.setItem(MIGRATION_KEY, 'done');
-        if (typeof window.__fpSync === 'function') window.__fpSync();
+        localStorage.setItem('pb.migrated.colab.v1', 'done');
+        localStorage.setItem('pb.guru.remote_catalog_synced', '1');
+        if (typeof window.__fpSync === 'function') await window.__fpSync();
       }
       return res || { ok: true };
     } catch (e) {

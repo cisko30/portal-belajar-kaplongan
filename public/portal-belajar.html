@@ -1449,7 +1449,7 @@
         onclick="return requirePortalAccess('/dashboard-guru.html','Dashboard Guru','guru')">👨‍🏫 Guru</a>
     </div>
     <div class="nav-right">
-      <a class="colab-pill" id="colabStatusPill" href="/auth.html" title="Status Sinkronisasi Google Colab SQLite">
+      <a class="colab-pill" id="colabStatusPill" href="/auth.html" title="Status Sinkronisasi Cloud (Firebase / Google Colab)">
         <span class="cp-dot"></span><span id="colabStatusTxt">Mode Lokal</span>
       </a>
       <button class="theme-btn" id="themeToggle" onclick="toggleTheme()" title="Ganti Tema Gelap / Terang"
@@ -2233,6 +2233,7 @@
     </div>
   </div>
 
+  <script src="/firebase-client.js"></script>
   <script src="/colab-client.js"></script>
   <script src="/migrate.js"></script>
   <script>
@@ -2514,27 +2515,28 @@
       if (window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
       if (window.colabDb && window.colabDb.isReady()) {
         try {
-          const remote = await window.colabDb.topics.list();
-          if (Array.isArray(remote) && remote.length > 0) {
+          const raw = await window.colabDb.topics.list();
+          const remote = Array.isArray(raw) ? raw : (raw && Array.isArray(raw.topics) ? raw.topics : []);
+          if (remote.length > 0) {
+            const ovr = loadOverrides();
             remote.forEach(topic => {
-              JENJANG_CATALOG.forEach(j => {
-                j.topics.forEach(t => {
-                  const k = j.id + '::' + t.name;
-                  if (topic.id === k) {
-                    if (topic.video_url) t.video = normalizeVideo(topic.video_url);
-                    if (topic.deskripsi) t.desc = topic.deskripsi;
-                  }
-                });
-              });
+              if (!topic || !topic.id) return;
+              ovr[topic.id] = {
+                video: topic.video_url || (ovr[topic.id] && ovr[topic.id].video) || '',
+                desc: topic.deskripsi || (ovr[topic.id] && ovr[topic.id].desc) || ''
+              };
             });
+            saveOverrides(ovr);
+            applyOverrides();
             renderJenjang();
           }
-        } catch (err) { console.warn('[ColabTopics] Gagal memuat topik dari Colab:', err); }
+        } catch (err) { console.warn('[CloudTopics] Gagal memuat topik dari cloud:', err); }
       }
     }
     applyOverrides();
     renderJenjang();
     syncCloudTopics();
+    window.addEventListener('pb:topics', () => { syncCloudTopics(); });
 
     // ==== Editor UI (guru/admin only) ====
     function isEditor() { const r = localStorage.getItem('userRole'); return r === 'guru' || r === 'admin' }
@@ -2586,9 +2588,11 @@
       });
       saveOverrides(ovr); applyOverrides(); renderJenjang(); closeEd();
 
+      if (window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
       if (window.colabDb && window.colabDb.isReady()) {
         try {
           const pass = localStorage.getItem('pb.guru.passphrase') || '';
+          const tok = (window.colabDb.getToken && window.colabDb.getToken()) || '';
           const topicsPayload = Object.entries(ovr).map(([k, data]) => {
             const parts = k.split('::');
             return {
@@ -2600,10 +2604,10 @@
               video_url: data.video || null
             };
           });
-          if (topicsPayload.length && pass) {
+          if (topicsPayload.length && (pass || tok)) {
             await window.colabDb.topics.upsert(topicsPayload, pass);
           }
-        } catch (err) { console.warn('[ColabTopics] Gagal simpan ke Colab:', err); }
+        } catch (err) { console.warn('[CloudTopics] Gagal simpan ke cloud:', err); }
       }
       alert('Perubahan tersimpan. Siswa akan melihat video baru saat membuka materi.');
     }
@@ -2826,9 +2830,10 @@
         try {
           const h = await window.colabDb.testConnection();
           if (h && h.ok) {
+            const isFb = window.colabDb.isFirebase && window.colabDb.isFirebase();
             if (pill) pill.classList.add('online');
-            if (pillTxt) pillTxt.textContent = 'Colab SQLite';
-            if (hbSyncTxt) { hbSyncTxt.textContent = 'Aktif · Drive Terpasang'; hbSyncTxt.style.color = 'var(--ok)'; }
+            if (pillTxt) pillTxt.textContent = isFb ? 'Firebase Cloud' : 'Colab SQLite';
+            if (hbSyncTxt) { hbSyncTxt.textContent = isFb ? 'Aktif · Firebase Real-Time' : 'Aktif · Drive Terpasang'; hbSyncTxt.style.color = 'var(--ok)'; }
             if (hbSyncBar) { hbSyncBar.style.width = '100%'; hbSyncBar.style.background = 'var(--ok)'; }
             if (hsSync) hsSync.textContent = 'Online';
 
@@ -2838,9 +2843,10 @@
               const totalM = baseTopics + remoteMateri;
               if (hcMateri) hcMateri.textContent = totalM + '+';
               if (hsMateri) hsMateri.textContent = totalM + '+';
-              if (Array.isArray(cat.accounts) && cat.accounts.length > 0 && hcSiswa) {
-                hcSiswa.textContent = String(cat.accounts.length);
-                if (hcSiswaLbl) hcSiswaLbl.textContent = 'Akun Colab SQLite';
+              const accCount = Array.isArray(cat.accounts) ? cat.accounts.length : (h.counts && h.counts.accounts ? h.counts.accounts : 0);
+              if (accCount > 0 && hcSiswa) {
+                hcSiswa.textContent = String(accCount);
+                if (hcSiswaLbl) hcSiswaLbl.textContent = isFb ? 'Akun Firebase Cloud' : 'Akun Colab SQLite';
               }
             }
           }

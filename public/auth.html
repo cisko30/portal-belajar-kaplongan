@@ -244,6 +244,7 @@
     }
     .hidden { display: none !important; }
   </style>
+  <script src="/firebase-client.js"></script>
   <script src="/colab-client.js"></script>
   <script src="/migrate.js"></script>
 </head>
@@ -337,10 +338,10 @@
         <button type="submit" id="btnSubmitRegister" class="auth-btn">Daftar Sekarang &rarr;</button>
       </form>
 
-      <!-- Status Google Colab -->
+      <!-- Status Cloud Database (Firebase / Google Colab) -->
       <div id="colabStatusBar" style="margin-top:16px;padding:10px 12px;border-radius:10px;background:#f1f5f9;font-size:12px;color:#475569;display:flex;align-items:center;justify-content:space-between;gap:8px;">
-        <span id="colabStatusTxt">Database Google Colab: belum dihubungkan</span>
-        <button type="button" onclick="promptColabConfig()" style="background:#4f46e5;color:#fff;border:none;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">Atur URL</button>
+        <span id="colabStatusTxt">Database Cloud: memeriksa koneksi…</span>
+        <button type="button" onclick="promptColabConfig()" style="background:#4f46e5;color:#fff;border:none;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">Atur Cloud</button>
       </div>
 
       <div style="margin-top:14px;padding:12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:12px;text-align:center;">
@@ -356,7 +357,7 @@
       </div>
 
       <div class="config-trigger">
-        <button type="button" onclick="promptColabConfig()">Pengaturan Server Google Colab</button>
+        <button type="button" onclick="promptColabConfig()">Pengaturan Database Cloud (Firebase / Colab)</button>
       </div>
     </div>
   </div>
@@ -412,6 +413,7 @@
       btn.textContent = 'Memeriksa kredensial…';
 
       try {
+        if (window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
         if (window.colabDb && window.colabDb.isReady()) {
           if (currentRole === 'guru') {
             const j = await window.colabDb.auth.teacherLogin(pw);
@@ -419,7 +421,7 @@
             localStorage.setItem('userRole', 'guru');
             localStorage.setItem('pb.guru.passphrase', pw);
             sessionStorage.removeItem('pb.admin.ok');
-            showMsg('Berhasil masuk ke Google Colab! Mengarahkan…', 'ok');
+            showMsg('Berhasil masuk ke ' + (window.colabDb.getEngine ? window.colabDb.getEngine() : 'Cloud') + '! Mengarahkan…', 'ok');
             location.href = '/dashboard-guru.html';
           } else if (currentRole === 'admin') {
             const j = await window.colabDb.auth.adminLogin(pw);
@@ -535,11 +537,12 @@
       btn.textContent = 'Mendaftarkan akun…';
 
       try {
+        if (window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
         if (window.colabDb && window.colabDb.isReady()) {
-          const pass = localStorage.getItem('pb.guru.passphrase') || prompt('Masukkan passphrase Guru / Admin untuk mendaftarkan siswa ke Google Colab:') || '';
-          if (!pass) throw new Error('Passphrase Guru dibutuhkan untuk menambah akun siswa baru ke database Colab.');
+          const pass = localStorage.getItem('pb.guru.passphrase') || prompt('Masukkan passphrase Guru / Admin untuk mendaftarkan siswa ke Cloud Database:') || '';
+          if (!pass) throw new Error('Passphrase Guru dibutuhkan untuk menambah akun siswa baru ke database cloud.');
           await window.colabDb.accounts.mutate({ op: 'add', nis, nama, kelas, password: pw }, pass);
-          showMsg('Akun siswa berhasil disimpan ke Google Colab SQLite! Silakan masuk dengan NIS & password.', 'ok');
+          showMsg('Akun siswa berhasil disimpan ke ' + (window.colabDb.getEngine ? window.colabDb.getEngine() : 'Cloud Database') + '! Silakan masuk dengan NIS & password.', 'ok');
           setTimeout(() => switchTab('login'), 1500);
         } else {
           // Simpan ke cache lokal / fallback agar tetap bisa dicoba secara offline
@@ -565,33 +568,60 @@
       const txt = document.getElementById('colabStatusTxt');
       if (!txt || !window.colabDb) return;
       if (window.colabDb.isReady()) {
-        txt.innerHTML = '🟢 Google Colab terhubung: <code style="font-size:11px">' + window.colabDb.getUrl() + '</code>';
+        if (window.colabDb.isFirebase && window.colabDb.isFirebase()) {
+          const cfg = window.colabDb.getFirebaseConfig ? window.colabDb.getFirebaseConfig() : null;
+          txt.innerHTML = '🟢 Firebase Cloud terhubung: <code style="font-size:11px">' + (cfg && cfg.projectId ? cfg.projectId : 'Firestore') + '</code>';
+        } else {
+          txt.innerHTML = '🟢 Cloud terhubung: <code style="font-size:11px">' + (window.colabDb.getUrl() || 'Server Lokal') + '</code>';
+        }
       } else {
-        txt.textContent = '🟡 Mode Lokal (Google Colab belum diatur)';
+        txt.textContent = '🟡 Mode Lokal (Firebase / Cloud belum diatur)';
       }
     }
 
     async function promptColabConfig() {
-      const current = window.colabDb ? window.colabDb.getUrl() : '';
-      const url = prompt('Masukkan URL Public Tunnel Google Colab (mis. https://xxxx.trycloudflare.com):', current || '');
-      if (url === null) return;
-      if (window.colabDb) {
-        window.colabDb.setUrl(url);
+      const curFb = (window.colabDb && window.colabDb.getFirebaseConfig) ? window.colabDb.getFirebaseConfig() : null;
+      const curUrl = window.colabDb ? window.colabDb.getUrl() : '';
+      const val = prompt(
+        'Tempel firebaseConfig JSON / JS snippet dari Firebase Console ATAU URL Tunnel Google Colab (kosongkan untuk reset ke Mode Lokal):',
+        curFb ? JSON.stringify(curFb) : (curUrl || '')
+      );
+      if (val === null) return;
+      if (!window.colabDb) return;
+      const trimmed = val.trim();
+      if (!trimmed) {
+        if (window.colabDb.setFirebaseConfig) window.colabDb.setFirebaseConfig(null);
+        window.colabDb.setUrl('');
         updateColabBadge();
-        if (url.trim()) {
-          showMsg('Menguji koneksi ke Google Colab…', 'ok');
-          try {
-            const h = await window.colabDb.testConnection(url);
-            showMsg('✅ Terhubung ke Google Colab SQLite! (' + (h.counts?.accounts || 0) + ' akun, ' + (h.counts?.submissions || 0) + ' kiriman)', 'ok');
-          } catch (err) {
-            showMsg('⚠️ URL disimpan, namun test koneksi gagal: ' + err.message, 'err');
-          }
-        } else {
-          showMsg('URL Google Colab dihapus (mode lokal).', 'ok');
+        showMsg('Konfigurasi Cloud dihapus (kembali ke Mode Lokal).', 'ok');
+        return;
+      }
+      if (/^https?:\/\//i.test(trimmed)) {
+        window.colabDb.setUrl(trimmed);
+        updateColabBadge();
+        showMsg('Menguji koneksi ke Google Colab…', 'ok');
+        try {
+          const h = await window.colabDb.testConnection(trimmed);
+          showMsg('✅ Terhubung ke Google Colab SQLite! (' + (h.counts?.accounts || 0) + ' akun, ' + (h.counts?.submissions || 0) + ' kiriman)', 'ok');
+        } catch (err) {
+          showMsg('⚠️ URL disimpan, namun test koneksi gagal: ' + err.message, 'err');
         }
+        return;
+      }
+      try {
+        window.colabDb.setFirebaseConfig(trimmed);
+        updateColabBadge();
+        showMsg('Menguji koneksi ke Firebase Cloud Firestore…', 'ok');
+        const h = await window.colabDb.testConnection();
+        showMsg('✅ Terhubung ke Firebase (' + (h.projectId || '') + ')! (' + (h.counts?.accounts || 0) + ' akun, ' + (h.counts?.submissions || 0) + ' kiriman)', 'ok');
+      } catch (err) {
+        showMsg('⚠️ Gagal menghubungkan Firebase: ' + (err.message || 'Periksa format firebaseConfig & Firestore Rules.'), 'err');
       }
     }
     updateColabBadge();
+    if (window.colabDb && window.colabDb.whenReady) {
+      window.colabDb.whenReady().then(updateColabBadge).catch(() => {});
+    }
 
     function quickLogin(role) {
       if (role === 'siswa') {

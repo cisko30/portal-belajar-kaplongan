@@ -520,7 +520,7 @@ async def mutate_accounts(request: Request, x_guru_passphrase: Optional[str] = H
                 (nis, str(body.get("nama") or "")[:80], str(body.get("kelas") or "")[:20], pw_hash, ts),
             )
         conn.commit()
-    return list_accounts(x_guru_passphrase)
+    return list_accounts(x_guru_passphrase, authorization)
 
 
 @app.get("/api/topics")
@@ -895,17 +895,48 @@ async def migrate_from_browser(request: Request, x_guru_passphrase: Optional[str
                 stats["accounts"] += 1
             conn.commit()
 
-    # 3. Activity & submissions
+    # 3. Activity & submissions (supports both {activity} and {submissions, absensi, modulesConfig})
+    act_payload: dict[str, Any] = {}
     if isinstance(payload.get("activity"), dict):
-        await save_activity_internal(payload["activity"], ts)
+        act_payload.update(payload["activity"])
+    if isinstance(payload.get("submissions"), dict):
+        for jenis in ("tugas", "lkpd", "quiz"):
+            if isinstance(payload["submissions"].get(jenis), dict) and jenis not in act_payload:
+                act_payload[jenis] = payload["submissions"][jenis]
+    if isinstance(payload.get("absensi"), dict):
+        merged_abs = dict(payload["absensi"])
+        merged_abs.update(act_payload.get("absensi") or {})
+        act_payload["absensi"] = merged_abs
+    if isinstance(payload.get("modulesConfig"), dict):
+        act_payload.setdefault("absensi", {})
+        act_payload["absensi"].setdefault("__CONFIG__|modules", payload["modulesConfig"])
+    if act_payload:
+        await save_activity_internal(act_payload, ts)
         stats["submissions"] = sum(
-            len(v) for k in ("tugas", "lkpd", "quiz") for v in (payload["activity"].get(k) or {}).values()
+            len(v) for k in ("tugas", "lkpd", "quiz") for v in (act_payload.get(k) or {}).values()
         )
 
-    # 4. Topics
-    if isinstance(payload.get("topics"), list):
+    # 4. Topics (supports list or { "SD::Topik": { video, desc } } dict)
+    raw_topics = payload.get("topics")
+    topic_rows: list[dict[str, Any]] = []
+    if isinstance(raw_topics, list):
+        topic_rows = [t for t in raw_topics if isinstance(t, dict)]
+    elif isinstance(raw_topics, dict):
+        for tid, val in raw_topics.items():
+            if not isinstance(val, dict):
+                continue
+            parts = str(tid).split("::", 1)
+            topic_rows.append({
+                "id": tid,
+                "jenjang": (parts[0] or "SMA").upper(),
+                "kelas": "ALL",
+                "judul": parts[1] if len(parts) > 1 else tid,
+                "deskripsi": val.get("desc", ""),
+                "video_url": val.get("video"),
+            })
+    if topic_rows:
         with get_conn() as conn:
-            for t in payload["topics"]:
+            for t in topic_rows:
                 tid = str(t.get("id") or "")
                 if not tid:
                     continue

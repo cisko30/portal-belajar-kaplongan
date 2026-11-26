@@ -1,5 +1,5 @@
 /* Service Worker — Portal Belajar SMA NU Kaplongan */
-const CACHE_NAME = 'pb-kaplongan-v3';
+const CACHE_NAME = 'pb-kaplongan-v4';
 const SHELL_ASSETS = [
   '/',
   '/portal-belajar.html',
@@ -7,6 +7,7 @@ const SHELL_ASSETS = [
   '/dashboard-murid.html',
   '/dashboard-guru.html',
   '/game-quiz.html',
+  '/firebase-client.js',
   '/colab-client.js',
   '/migrate.js',
   '/feature-panels.js',
@@ -40,7 +41,8 @@ self.addEventListener('fetch', (event) => {
   if (
     url.origin !== self.location.origin ||
     url.pathname.startsWith('/api/') ||
-    url.pathname === '/colab-config.json'
+    url.pathname === '/colab-config.json' ||
+    url.pathname === '/firebase-config.json'
   ) {
     return;
   }

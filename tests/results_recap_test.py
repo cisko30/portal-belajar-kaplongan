@@ -27,6 +27,7 @@ class ResultsRecapTest(unittest.TestCase):
             def page_for(account=None):
                 context=browser.new_context(viewport={'width':1280,'height':1800},accept_downloads=True)
                 context.route('**/api/**',intercept)
+                context.route('**/firebase-config.json',lambda r:r.fulfill(json={'apiKey':''}))
                 page=context.new_page();page.on('dialog',lambda d:d.accept())
                 page.goto('http://localhost:8080')
                 if account:page.evaluate('a=>{localStorage.setItem("userRole","murid");localStorage.setItem("pb.murid.nis",a.nis);localStorage.setItem("pb.murid.nama",a.nama);localStorage.setItem("pb.murid.myClass",JSON.stringify(a.kelas));}',account)

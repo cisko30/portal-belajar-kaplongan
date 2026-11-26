@@ -33,6 +33,7 @@ class TeacherGamePersistenceTest(unittest.TestCase):
             def new_page():
                 ctx = browser.new_context(viewport={'width': 1280, 'height': 1800})
                 ctx.route('**/api/**', intercept)
+                ctx.route('**/firebase-config.json', lambda r: r.fulfill(json={'apiKey': ''}))
                 page = ctx.new_page()
                 page.goto('http://localhost:8080/portal-belajar.html')
                 return ctx, page

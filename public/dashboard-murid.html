@@ -855,6 +855,7 @@ document.addEventListener('click', (e)=>{
 render();
 </script>
 
+<script src="/firebase-client.js"></script>
 <script src="/colab-client.js"></script>
 <script src="/migrate.js"></script>
 <script src="/feature-panels.js"></script>
@@ -941,8 +942,14 @@ render();
       });
       var doneQuiz=0;
       quizzes.forEach(function(q,i){
+        var qMine=(qSubs[i]||[]).find(isMe);
         var sc=qScores[i];
         if(sc!=null){ doneQuiz++; grades.push({label:q.j.slice(0,12),val:Math.round(sc/q.soal.length*100)}); }
+        else if(qMine){
+          doneQuiz++;
+          var pct=qMine.nilai!=null&&!isNaN(+qMine.nilai)?+qMine.nilai:(qMine.score!=null?Math.round(+qMine.score/q.soal.length*100):null);
+          if(pct!=null) grades.push({label:q.j.slice(0,12),val:pct});
+        }
       });
       var pendingQuiz=Math.max(0, quizzes.length-doneQuiz);
       var avg=grades.length?(grades.reduce(function(a,b){return a+b.val;},0)/grades.length).toFixed(1):'–';
@@ -1030,7 +1037,8 @@ render();
       function paintChip(){
         if(!chip) return;
         var ready = window.colabDb && window.colabDb.isReady();
-        chip.textContent = ready ? '🟢 Colab Aktif' : '🟡 Mode Lokal';
+        var label = (window.colabDb && window.colabDb.getModeLabel) ? window.colabDb.getModeLabel() : (ready ? 'Colab Aktif' : 'Mode Lokal');
+        chip.textContent = (ready ? '🟢 ' : '🟡 ') + label;
         chip.style.background = ready ? 'var(--okl)' : '';
         chip.style.color = ready ? 'var(--ok)' : '';
       }

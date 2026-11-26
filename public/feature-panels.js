@@ -633,12 +633,18 @@
 
 
   FEATURES.kelas = {
-    ico:'K', title:'Kelas Saya', sub:'Daftar kelas yang kamu ampu',
+    ico:'K', title:'Kelas Saya', sub:'Daftar kelas yang kamu ampu — tersinkron lintas perangkat',
     render(b){
       const key=K('kelas');
-      let list=LS.get(key, CLASS_CATALOG.map(c=>({n:c.n, s:30, m:c.mapel.join(' & '), avg: 80+Math.floor(Math.random()*8)})));
+      const cfgInit = FeatureConfig.get();
+      let list=Array.isArray(cfgInit.kelasList) && cfgInit.kelasList.length
+        ? cfgInit.kelasList
+        : LS.get(key, CLASS_CATALOG.map(c=>({n:c.n, s:30, m:c.mapel.join(' & '), avg: 80+Math.floor(Math.random()*8)})));
 
-       const save=()=>LS.set(key,list);
+      const save=()=>{
+        LS.set(key,list);
+        const cfg=FeatureConfig.get(); cfg.kelasList=list; FeatureConfig.save(cfg);
+      };
       const draw=()=>{
         b.innerHTML=`
         <div class="fp-row" style="margin-bottom:12px;justify-content:space-between;flex-wrap:wrap;gap:8px">
@@ -730,9 +736,10 @@
   };
 
   const Accounts = {
+    hasToken(){ return !!(window.colabDb && window.colabDb.getToken && window.colabDb.getToken()); },
     pass(force){
       let p = localStorage.getItem('pb.guru.passphrase') || '';
-      if(!p || force){
+      if((!p && (!this.hasToken() || force)) || force){
         p = prompt(force? 'Passphrase guru salah. Masukkan ulang:' : 'Masukkan passphrase Guru untuk mengelola akun siswa:', force? '' : (p||''))||'';
         if(p) localStorage.setItem('pb.guru.passphrase', p);
         else localStorage.removeItem('pb.guru.passphrase');
@@ -746,7 +753,7 @@
       try {
         if(window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
         const pass = this.pass(retry);
-        if(!pass && ROLE==='guru') return isPost ? mutateLocalAccounts(postBody) : readCachedAccounts();
+        if(!pass && !this.hasToken() && ROLE==='guru') return isPost ? mutateLocalAccounts(postBody) : readCachedAccounts();
         if(window.colabDb && window.colabDb.isReady()){
           try{
             const j = isPost
@@ -961,8 +968,10 @@
         const upOk = FeatureConfig.subEnabled('materi_upload');
         const fltOk = FeatureConfig.subEnabled('materi_filter');
         const storeNote = dr.ready
-          ? `<span style="font-size:12px;color:#047857">☁️ Tersimpan di Google Drive — maks. ${Math.round(dr.maxBytes/1048576)}MB per file, otomatis bisa dibuka semua siswa.</span>`
-          : `<span style="font-size:12px;color:#b45309">⚠️ Google Drive belum aktif — file disimpan lokal (maks. 5MB, hanya di browser ini).</span>`;
+          ? (window.colabDb && window.colabDb.isFirebase && window.colabDb.isFirebase()
+              ? `<span style="font-size:12px;color:#047857">🔥 Tersimpan di Firebase Cloud — maks. ${Math.round(dr.maxBytes/1048576)}MB per file, otomatis sinkron di semua perangkat.</span>`
+              : `<span style="font-size:12px;color:#047857">☁️ Tersimpan di Cloud / Google Drive — maks. ${Math.round(dr.maxBytes/1048576)}MB per file, otomatis bisa dibuka semua siswa.</span>`)
+          : `<span style="font-size:12px;color:#b45309">⚠️ Cloud belum aktif — file disimpan lokal (maks. 5MB, hanya di browser ini).</span>`;
         b.innerHTML=`
         <div class="fp-card" style="display:grid;gap:10px;margin-bottom:12px">
           <div class="fp-row">
@@ -988,7 +997,7 @@
           if(fltOk && subjectFilter!=='ALL' && materialSubject(m)!==subjectFilter) return '';
           const srcs=[];
           if(m.l) srcs.push(`<a href="${esc(m.l)}" target="_blank" rel="noopener" style="color:#4f46e5;text-decoration:underline">Link</a>`);
-          if(m.f) srcs.push(`<a href="${esc(m.f.data)}" ${m.f.drive?'target="_blank" rel="noopener"':`download="${esc(m.f.name)}"`} style="color:#4f46e5;text-decoration:underline">${esc(m.f.name)}</a> <span style="color:#94a3b8;font-size:11px">(${fmtSize(m.f.size)}${m.f.drive?' · Drive':' · lokal'})</span>`);
+          if(m.f) srcs.push(`<a href="${esc(m.f.data)}" ${m.f.drive?'target="_blank" rel="noopener"':`download="${esc(m.f.name)}"`} style="color:#4f46e5;text-decoration:underline">${esc(m.f.name)}</a> <span style="color:#94a3b8;font-size:11px">(${fmtSize(m.f.size)}${m.f.firebaseFile?' · Firebase':(m.f.drive?' · Drive':' · lokal')})</span>`);
           if(!srcs.length) srcs.push('<span style="color:#94a3b8">—</span>');
           return `<tr><td><b>${esc(m.j)}</b></td><td><select class="fp-select" data-subject="${i}" aria-label="Mata pelajaran ${esc(m.j)}" style="min-width:180px">${subjectOptionsHtml(materialSubject(m))}</select></td><td>${m.k==='ALL'?'<span class="fp-badge info">Semua Kelas</span>':esc(m.k)}</td><td>${srcs.join('<br>')}</td>
           <td><span class="fp-badge ${m.s==='Terbit'?'ok':'warn'}">${m.s}</span></td>
@@ -1016,10 +1025,11 @@
             btn.disabled=true;
             try{
               if(Drive.state().ready){
-                setStat(`Mengunggah "${file.name}" ke Google Drive…`,'#0369a1');
+                const isFb = window.colabDb && window.colabDb.isFirebase && window.colabDb.isFirebase();
+                setStat(isFb ? `Mengunggah "${file.name}" ke Firebase Cloud…` : `Mengunggah "${file.name}" ke Cloud…`,'#0369a1');
                 const up=await Drive.upload(file, entry.k);
-                entry.f={name:up.name,size:up.size,type:up.mimeType,data:up.viewLink,preview:up.previewLink,download:up.downloadLink,id:up.id,drive:true};
-                setStat('✅ Berhasil diunggah ke Google Drive.','#047857');
+                entry.f={name:up.name,size:up.size,type:up.mimeType,data:up.viewLink,preview:up.previewLink,download:up.downloadLink,id:up.id,drive:!up.firebaseFile,firebaseFile:!!up.firebaseFile};
+                setStat(isFb ? '✅ Berhasil diunggah ke Firebase Cloud.' : '✅ Berhasil diunggah ke Cloud.','#047857');
               }else{
                 if(file.size>5*1048576){btn.disabled=false;return alert('Google Drive belum aktif, jadi file dibatasi 5MB. Aktifkan Drive untuk file besar.');}
                 const data=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file);});
@@ -1048,8 +1058,8 @@
         b.querySelectorAll('[data-d]').forEach(x=>x.onclick=async()=>{
           if(!confirm('Hapus materi ini?'))return;
           const i=+x.dataset.d; const m=list[i];
-          if(m.f&&m.f.drive&&m.f.id&&confirm('Hapus juga file-nya dari Google Drive?')){
-            try{await Drive.remove(m.f.id);}catch(err){alert('File Drive gagal dihapus: '+err.message);}
+          if((m.f&&m.f.drive&&m.f.id&&confirm('Hapus juga file-nya dari Google Drive?')) || (m.f&&m.f.firebaseFile&&m.f.id&&confirm('Hapus juga lampiran file dari Firebase Cloud?'))){
+            try{await Drive.remove(m.f.id);}catch(err){alert('File Cloud gagal dihapus: '+err.message);}
           }
           list.splice(i,1);save();draw();
         });
@@ -1060,14 +1070,16 @@
     }
   };
 
-  // ── Google Drive (penyimpanan hybrid: file besar ke Drive guru) ──
+  // ── Cloud Storage / Google Drive (Firebase Chunked Files / Colab / Drive) ──
   const Drive = (function(){
-    let st={ready:false,passphraseRequired:false,maxBytes:5*1048576,checked:false};
+    let st={ready:false,passphraseRequired:false,maxBytes:8*1048576,checked:false};
     const PASS_KEY='pb.guru.passphrase';
     const pass=()=>localStorage.getItem(PASS_KEY)||'';
     async function ensure(){
+      if(window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
       if(window.colabDb && window.colabDb.isReady()){
-        st.checked=true; st.ready=true; st.passphraseRequired=true; st.maxBytes=25*1048576;
+        st.checked=true; st.ready=true; st.passphraseRequired=true;
+        st.maxBytes=(window.colabDb.isFirebase && window.colabDb.isFirebase()) ? 8*1048576 : 25*1048576;
         return st;
       }
       if(st.checked) return st;
@@ -1080,15 +1092,18 @@
     }
     function askPass(force){
       let p=pass();
-      if(!p||force){
-        p=prompt('Masukkan passphrase Guru untuk mengunggah ke Google Drive:')||'';
+      const hasTok = !!(window.colabDb && window.colabDb.getToken && window.colabDb.getToken());
+      if((!p && !hasTok) || force){
+        p=prompt('Masukkan passphrase Guru untuk mengunggah lampiran ke Cloud:')||'';
         if(p) localStorage.setItem(PASS_KEY,p);
       }
       return p;
     }
     async function upload(file, kelas){
+      if(window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
       let p=askPass(false);
-      if(!p) throw new Error('Passphrase guru dibutuhkan.');
+      const hasTok = !!(window.colabDb && window.colabDb.getToken && window.colabDb.getToken());
+      if(!p && !hasTok) throw new Error('Passphrase guru dibutuhkan.');
       const send=async(pw)=>{
         if(window.colabDb && window.colabDb.isReady()){
           return await window.colabDb.files.upload(file, kelas||'', pw);
@@ -1106,7 +1121,13 @@
       }
     }
     async function remove(id){
-      if(window.colabDb && window.colabDb.isReady()) return;
+      if(window.colabDb && window.colabDb.isReady()){
+        const p=askPass(false);
+        if(window.colabDb.files && window.colabDb.files.remove){
+          await window.colabDb.files.remove(id, p);
+        }
+        return;
+      }
       const p=askPass(false); if(!p) throw new Error('Passphrase guru dibutuhkan.');
       const r=await fetch('/api/drive/materials?id='+encodeURIComponent(id),{method:'DELETE',headers:{'x-guru-passphrase':p}});
       if(!r.ok){const j=await r.json().catch(()=>({})); throw new Error(j.error||('Gagal hapus ('+r.status+')'));}
@@ -1158,7 +1179,8 @@
       const silent=opts&&opts.silent;
 
       let p=localStorage.getItem('pb.guru.passphrase')||'';
-      if(!p){
+      const hasTok=!!(window.colabDb && window.colabDb.getToken && window.colabDb.getToken());
+      if(!p && !hasTok){
         if(silent) return;
         p=(prompt('Masukkan password admin (atau passphrase guru) agar tugas/materi terkirim ke akun siswa:')||'').trim();
         if(!p){ Guard.notify('Belum terkirim ke siswa: passphrase guru belum diisi.','err'); return; }
@@ -1166,12 +1188,15 @@
       }
       const body={updatedAt:revision}; KINDS.forEach(k=>{ body[k]=LS.get('pb.guru.'+k,[])||[]; });
       try{
+        if(window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
         if(window.colabDb && window.colabDb.isReady()){
           try{
             const saved=await window.colabDb.catalog.publish(body, p);
             revision=(saved&&saved.updatedAt)||revision;
+            localStorage.setItem('pb.guru.remote_catalog_synced','1');
             emitSync();
-            if(!silent) Guard.notify('Tersimpan di Google Colab SQLite & terkirim ke akun siswa.');
+            const eng = (window.colabDb.isFirebase && window.colabDb.isFirebase()) ? 'Firebase Cloud' : (window.colabDb.getEngine ? window.colabDb.getEngine() : 'Cloud');
+            if(!silent) Guard.notify('Tersimpan di ' + eng + ' & terkirim ke akun siswa.');
             return;
           }catch(colErr){
             if(colErr && colErr.status===401){
@@ -1216,7 +1241,46 @@
     let pulling=null;
     function cache(data){
       ['tugas','lkpd','quiz'].forEach(k=>{ if(data[k]&&typeof data[k]==='object'){ if(k==='quiz')Object.values(data[k]).forEach(list=>(list||[]).forEach(e=>{if(e.total>0&&e.benar>=0&&e.benar<=e.total&&e.nilai==null)e.nilai=Math.round(e.benar/e.total*100);})); LS.set(LKEY[k],data[k]); } });
-      if(data.absensi&&typeof data.absensi==='object') LS.set(ABS_KEY,data.absensi);
+      if(data.absensi&&typeof data.absensi==='object'){
+        LS.set(ABS_KEY,data.absensi);
+        if(data.absensi['__CONFIG__|modules'] && typeof data.absensi['__CONFIG__|modules']==='object'){
+          const cfg = data.absensi['__CONFIG__|modules'];
+          LS.set('pb.modules.config', cfg);
+          if(Array.isArray(cfg.kelasList)) LS.set('pb.guru.kelas', cfg.kelasList);
+          if(Array.isArray(cfg.bankSoal)) LS.set('pb.guru.bank', cfg.bankSoal);
+        }
+      }
+      if(ROLE==='murid'){
+        try{
+          const myNis=localStorage.getItem('pb.murid.nis')||'';
+          const myNama=(localStorage.getItem('pb.murid.nama')||'').trim();
+          const myCls=getMyClass()||'';
+          const mineFn=s=>s&&((myNis && s.userId===myNis)||(myNama && s.nama===myNama && canonicalClass(s.kelas)===myCls));
+          const gp=(data.lkpd && data.lkpd['game-progress'])||[];
+          const myGp=gp.filter(mineFn);
+          if(myGp.length){
+            const bestXp=Math.max(+(localStorage.getItem('pb.game.xp')||0), ...myGp.map(x=>+x.xp||0));
+            const bestAns=Math.max(+(localStorage.getItem('pb.game.answered')||0), ...myGp.map(x=>+x.answered||0));
+            const bestCor=Math.max(+(localStorage.getItem('pb.game.correct')||0), ...myGp.map(x=>+x.correct||0));
+            localStorage.setItem('pb.game.xp', String(bestXp));
+            localStorage.setItem('pb.game.answered', String(bestAns));
+            localStorage.setItem('pb.game.correct', String(bestCor));
+            const pracMerged = Object.assign({}, LS.get('pb.skill.practice.v1', {})||{});
+            myGp.forEach(x=>{ if(x.skillPractice && typeof x.skillPractice==='object') Object.assign(pracMerged, x.skillPractice); });
+            LS.set('pb.skill.practice.v1', pracMerged);
+          }
+          const quizCatalog=LS.get('pb.guru.quiz',[])||[];
+          if(data.quiz && quizCatalog.length){
+            const scores = Object.assign({}, LS.get('pb.murid.quizScores', {})||{});
+            quizCatalog.forEach((q, idx)=>{
+              const qk=(String(q&&q.j||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,60))||('quiz-'+idx);
+              const hit=(data.quiz[qk]||[]).find(mineFn);
+              if(hit && hit.benar!=null) scores[idx]=Number(hit.benar);
+            });
+            LS.set('pb.murid.quizScores', scores);
+          }
+        }catch(_){}
+      }
     }
     async function pull(){
       if(pulling) return pulling;
@@ -1280,12 +1344,14 @@
     async function publish(){
       if(ROLE!=='guru') return;
       let p=localStorage.getItem('pb.guru.passphrase')||'';
-      if(!p){
+      const hasTok=!!(window.colabDb && window.colabDb.getToken && window.colabDb.getToken());
+      if(!p && !hasTok){
         p=(prompt('Masukkan password admin (atau passphrase guru) agar nilai terkirim ke siswa:')||'').trim();
         if(!p) return;
         localStorage.setItem('pb.guru.passphrase',p);
       }
       try{
+        if(window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
         if(window.colabDb && window.colabDb.isReady()){
           try{
             await window.colabDb.activity.publish(local(), p);
@@ -1331,11 +1397,14 @@
     return {pull,submit,publish,local,absensi,grade};
   })();
 
-  // ── Google Colab Live Polling Sync Listener ──
+  // ── Real-Time Sync Listener (Firebase onSnapshot + Colab/Server Polling) ──
   (async function initRealtimeSync(){
     if(!window.colabDb) return;
     if(window.colabDb.whenReady) await window.colabDb.whenReady();
     if(!window.colabDb.isReady()) return;
+    if(window.firebaseDb && window.firebaseDb.isReady() && window.firebaseDb.startRealtime){
+      window.firebaseDb.startRealtime().catch(()=>{});
+    }
     let lastSyncAt = Date.now(), lastDigest = '';
     const PASSIVE_FEATS = new Set(['leaderboard','progres','progres_saya','nilai','laporan']);
     const calcDigest = () => {
@@ -1343,7 +1412,8 @@
         return ['materi','tugas','lkpd','quiz','pengumuman'].map(k=>(localStorage.getItem('pb.guru.'+k)||'').length).join(':')
           + '|' + (localStorage.getItem('pb.cached.accounts')||'').length
           + '|' + (localStorage.getItem('pb.submissions.tugas')||'').length
-          + '|' + (localStorage.getItem('pb.submissions.quiz')||'').length;
+          + '|' + (localStorage.getItem('pb.submissions.quiz')||'').length
+          + '|' + (localStorage.getItem('pb.modules.config')||'').length;
       } catch(_) { return ''; }
     };
     const refreshPanel = () => {
@@ -1361,7 +1431,7 @@
       try{
         await SharedCatalog.pull();
         await Activity.pull();
-        if(ROLE==='guru' && localStorage.getItem('pb.guru.passphrase')){
+        if(ROLE==='guru' && (localStorage.getItem('pb.guru.passphrase') || (window.colabDb.getToken && window.colabDb.getToken()))){
           const res = await window.colabDb.accounts.list(localStorage.getItem('pb.guru.passphrase')||'').catch(()=>null);
           if(res && Array.isArray(res.accounts)){
             localStorage.setItem('pb.accounts.seeded_v2','1');
@@ -1377,7 +1447,12 @@
       }catch(_){}
     };
     lastDigest = calcDigest();
-    setInterval(()=>syncOnce(true), 20000);
+    const intervalMs = (window.colabDb.isFirebase && window.colabDb.isFirebase()) ? 45000 : 20000;
+    setInterval(()=>syncOnce(true), intervalMs);
+    window.addEventListener('pb:sync', ()=>{
+      const nextDigest = calcDigest();
+      if(nextDigest !== lastDigest){ lastDigest = nextDigest; refreshPanel(); }
+    });
     window.addEventListener('focus', ()=>syncOnce(false));
     document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) syncOnce(false); });
   })();
@@ -1516,7 +1591,7 @@
   });
   const fmtSize=(n)=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB';
 
-  // ── link unduh berkas (HTML dari Drive diunduh lewat proxy kita) ──
+  // ── link unduh & delegator pbfile:// (Firebase chunked attachment) ──
   const isHtmlFile = (f)=> !!(f && (/^(text\/html|application\/xhtml\+xml)$/.test(f.type||'') || /\.html?$/i.test(f.name||'')));
   const dlUrl = (f)=>{
     if(!f) return '';
@@ -1526,11 +1601,41 @@
   };
   const dlAttrs = (f)=> (f && f.drive && !isHtmlFile(f)) ? 'target="_blank" rel="noopener"' : `download="${esc((f&&f.name)||'materi')}"`;
 
+  document.addEventListener('click', async (e)=>{
+    const a = e.target && e.target.closest ? e.target.closest('a[href^="pbfile://"]') : null;
+    if(!a) return;
+    e.preventDefault();
+    const href = a.getAttribute('href') || '';
+    if(!window.colabDb || !window.colabDb.files || !window.colabDb.files.resolveBlobUrl){
+      return alert('Firebase belum aktif untuk membuka lampiran ini.');
+    }
+    const oldTxt = a.textContent;
+    try{
+      a.textContent = '⏳ Memuat...';
+      const blobUrl = await window.colabDb.files.resolveBlobUrl(href);
+      a.textContent = oldTxt;
+      if(a.hasAttribute('download') || href.includes('download=1')){
+        const dl = document.createElement('a');
+        dl.href = blobUrl;
+        dl.download = a.getAttribute('download') || 'lampiran';
+        document.body.appendChild(dl);
+        dl.click();
+        dl.remove();
+      } else {
+        window.open(blobUrl, '_blank', 'noopener');
+      }
+    }catch(err){
+      a.textContent = oldTxt;
+      alert('Gagal memuat lampiran Firebase: ' + (err && err.message ? err.message : err));
+    }
+  });
+
   // ── viewer inline (materi / lampiran / preview kiriman siswa) ──
   function openViewer(title, {link, file, text}){
     const wrap=document.createElement('div');
     wrap.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.78);z-index:10050;display:flex;align-items:center;justify-content:center;padding:20px';
     const isDrive = !!(file && file.drive);
+    const isFbFile = !!(file && (file.firebaseFile || String(file.data||'').startsWith('pbfile://') || String(link||'').startsWith('pbfile://')));
     const isHtml = isHtmlFile(file);
     const driveSrc = isHtml && file.id
       ? `/api/drive/materials?fileId=${encodeURIComponent(file.id)}`
@@ -1539,29 +1644,42 @@
     const dlHref = dlUrl(file);
     const isImg = (file && ((file.type||'').startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(file.name||''))) || /\.(png|jpe?g|gif|webp)(\?|$)/i.test(src||'');
     const isTxt = file && ((file.type||'').startsWith('text/plain') || /\.(txt|py|csv|json|md)$/i.test(file.name||''));
+    const buildPreviewNode = (resolvedSrc) => {
+      if(!resolvedSrc) return !text ? `<div class="fp-empty">Tidak ada berkas atau tautan untuk dipratinjau.</div>` : '';
+      if(isImg) return `<img src="${esc(resolvedSrc)}" style="max-width:100%;max-height:70vh;display:block;margin:auto;border-radius:8px"/>`;
+      if(isTxt && resolvedSrc.startsWith('data:')) return `<pre style="background:#0f172a;color:#e2e8f0;padding:14px;border-radius:8px;max-height:65vh;overflow:auto;font-size:12.5px">${esc(atob(resolvedSrc.split(',')[1]||''))}</pre>`;
+      return `<iframe src="${esc(resolvedSrc)}" allow="autoplay"${isHtml?' sandbox="allow-scripts allow-popups"':''} style="width:100%;height:70vh;border:0;border-radius:8px;background:#fff"></iframe>`;
+    };
     let body = '';
     if(text) body += `<div style="background:#f8fafc;color:#0f172a;border:1px solid #e2e8f0;border-radius:10px;padding:12px 14px;margin-bottom:10px;max-height:220px;overflow:auto;white-space:pre-wrap;font-size:13px">${esc(text)}</div>`;
-    if(src){
-      body += isImg
-        ? `<img src="${esc(src)}" style="max-width:100%;max-height:70vh;display:block;margin:auto;border-radius:8px"/>`
-        : isTxt && src.startsWith('data:')
-          ? `<pre style="background:#0f172a;color:#e2e8f0;padding:14px;border-radius:8px;max-height:65vh;overflow:auto;font-size:12.5px">${esc(atob(src.split(',')[1]||''))}</pre>`
-          : `<iframe src="${esc(src)}" allow="autoplay"${isHtml?' sandbox="allow-scripts allow-popups"':''} style="width:100%;height:70vh;border:0;border-radius:8px;background:#fff"></iframe>`;
-    } else if(!text){
-      body = `<div class="fp-empty">Tidak ada berkas atau tautan untuk dipratinjau.</div>`;
+    if(isFbFile && String(src||'').startsWith('pbfile://')){
+      body += `<div id="vFbHost"><div class="fp-empty">⏳ Mengunduh pratinjau berkas dari Firebase Cloud...</div></div>`;
+    } else {
+      body += buildPreviewNode(src);
     }
     const isDark = document.documentElement.dataset.theme==='dark';
     wrap.innerHTML=`<div style="background:${isDark?'#111827':'#fff'};color:${isDark?'#f1f5f9':'#0f172a'};border:1px solid ${isDark?'#334155':'#e2e8f0'};border-radius:14px;padding:16px;max-width:1000px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.45)">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px">
-        <h3 style="margin:0;font-size:16px">${esc(title)}${isDrive?' <span class="fp-badge info" style="font-size:10px">Drive</span>':''}${file&&file.compressed?' <span class="fp-badge ok" style="font-size:10px">Terkompresi</span>':''}</h3>
+        <h3 style="margin:0;font-size:16px">${esc(title)}${isFbFile?' <span class="fp-badge info" style="font-size:10px">🔥 Firebase</span>':(isDrive?' <span class="fp-badge info" style="font-size:10px">Drive</span>':'')}${file&&file.compressed?' <span class="fp-badge ok" style="font-size:10px">Terkompresi</span>':''}</h3>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          ${file&&dlHref?`<a class="fp-btn sm" href="${esc(dlHref)}" ${dlAttrs(file)}>⬇️ Unduh</a>`:''}
-          ${(link||src)&&!String(link||src).startsWith('data:')?`<a class="fp-btn sm ghost" href="${esc(link||src)}" target="_blank" rel="noopener">Buka Tab Baru</a>`:''}
+          ${file&&dlHref?`<a class="fp-btn sm" id="vDlBtn" href="${esc(dlHref)}" ${dlAttrs(file)}>⬇️ Unduh</a>`:''}
+          ${(link||src)&&!String(link||src).startsWith('data:')&&!String(link||src).startsWith('pbfile://')?`<a class="fp-btn sm ghost" id="vTabBtn" href="${esc(link||src)}" target="_blank" rel="noopener">Buka Tab Baru</a>`:''}
           <button class="fp-btn sm danger" id="vClose">Tutup</button>
         </div></div>${body}</div>`;
     document.body.appendChild(wrap);
     wrap.querySelector('#vClose').onclick=()=>wrap.remove();
     wrap.onclick=(e)=>{if(e.target===wrap) wrap.remove();};
+    if(isFbFile && String(src||'').startsWith('pbfile://') && window.colabDb && window.colabDb.files && window.colabDb.files.resolveBlobUrl){
+      window.colabDb.files.resolveBlobUrl(src).then((blobUrl)=>{
+        const host = wrap.querySelector('#vFbHost');
+        if(host) host.innerHTML = buildPreviewNode(blobUrl);
+        const dlEl = wrap.querySelector('#vDlBtn');
+        if(dlEl) dlEl.href = blobUrl;
+      }).catch((err)=>{
+        const host = wrap.querySelector('#vFbHost');
+        if(host) host.innerHTML = `<div class="fp-empty">⚠️ Gagal memuat berkas: ${esc(err && err.message ? err.message : err)}</div>`;
+      });
+    }
   }
 
   FEATURES.tugas = {
@@ -2088,13 +2206,19 @@
   };
 
   FEATURES.bank = {
-    ico:'B', title:'Bank Soal', sub:'Kumpulan soal siap pakai — tambah, edit, atau kirim langsung ke Quiz',
+    ico:'B', title:'Bank Soal', sub:'Kumpulan soal siap pakai — tersinkron lintas perangkat',
     render(b){
-      const key=K('bank'); let list=LS.get(key,[
+      const key=K('bank');
+      const cfgBank = FeatureConfig.get().bankSoal;
+      let list=Array.isArray(cfgBank) && cfgBank.length ? cfgBank : LS.get(key,[
         {q:'Jelaskan pengertian algoritma.',t:'Esai',b:'X'},
         {q:'Sebutkan 3 struktur kontrol dasar.',t:'Isian',b:'X'},
         {q:'Perbedaan RAM dan ROM?',t:'Esai',b:'X'}
-      ]); const save=()=>LS.set(key,list);
+      ]);
+      const save=()=>{
+        LS.set(key,list);
+        const cfg=FeatureConfig.get(); cfg.bankSoal=list; FeatureConfig.save(cfg);
+      };
       const draw=()=>{
         b.innerHTML=`
         <div class="fp-card" style="margin-bottom:12px">
@@ -2379,56 +2503,121 @@
   };
 
   FEATURES.pengaturan = {
-    ico:'⚙️', title:'Database Google Colab & Sinkronisasi', sub:'Hubungkan Google Colab SQLite + Cloudflare Named Tunnel, kelola token sesi & aplikasi PWA',
+    ico:'🔥', title:'Firebase Cloud & Sinkronisasi', sub:'Simpan permanen di Firebase Firestore agar materi, tugas, quiz, akun siswa & nilai selalu ada di semua device',
     render(b){
-      const colabUrl = window.colabDb ? window.colabDb.getUrl() : '';
-      const ready = window.colabDb && window.colabDb.isReady();
+      const fbReady = !!(window.firebaseDb && window.firebaseDb.isReady());
+      const fbCfg = (window.firebaseDb && window.firebaseDb.getConfig) ? window.firebaseDb.getConfig() : null;
+      const colabUrl = (window.colabDb && !fbReady) ? window.colabDb.getUrl() : '';
+      const ready = !!(window.colabDb && window.colabDb.isReady());
       const tok = window.colabDb && window.colabDb.getToken ? window.colabDb.getToken() : (localStorage.getItem('pb.session.token')||'');
-      const migrated = localStorage.getItem('pb.migrated.colab.v1') === 'done';
-      const shareUrl = colabUrl ? (location.origin + '/?colab=' + encodeURIComponent(colabUrl)) : '';
+      const migrated = localStorage.getItem('pb.migrated.cloud.v2') === 'done' || localStorage.getItem('pb.migrated.colab.v1') === 'done';
+      const fbToken = (fbCfg && window.firebaseDb && window.firebaseDb.encodeConfigToken) ? window.firebaseDb.encodeConfigToken(fbCfg) : '';
+      const shareUrl = fbToken
+        ? (location.origin + '/?fb=' + encodeURIComponent(fbToken))
+        : (colabUrl ? (location.origin + '/?colab=' + encodeURIComponent(colabUrl)) : '');
+      const statusBadge = fbReady ? '🟢 Firebase Cloud Aktif' : (ready ? '🟢 ' + (window.colabDb.getModeLabel ? window.colabDb.getModeLabel() : 'Cloud Aktif') : '🟡 Mode Lokal');
       b.innerHTML=`
         <div class="fp-card" style="margin-bottom:14px">
           <div class="fp-row" style="justify-content:space-between">
             <div>
-              <h4>Status Database &amp; Session Token Server</h4>
-              <p>${ready ? 'Terhubung ke Google Colab SQLite ('+esc(colabUrl)+').' : 'Mode Lokal (belum dihubungkan ke Google Colab tunnel).'}<br>Token Sesi JWT/HMAC: <b>${tok?'Aktif (terverifikasi server)':'Belum ada — login saat Colab aktif'}</b></p>
+              <h4>Status Database Lintas Perangkat</h4>
+              <p>${fbReady ? 'Terhubung real-time ke <b>Firebase Firestore</b> (Project: <code>'+esc(fbCfg.projectId)+'</code>).' : (ready ? 'Terhubung ke Google Colab / Server ('+esc(colabUrl || location.origin)+').' : 'Mode Lokal — data baru tersimpan di browser ini saja. Hubungkan <b>Firebase Firestore</b> di bawah agar semua device otomatis tersinkron 24/7!')}<br>Token Sesi: <b>${tok?'Aktif (terverifikasi server)':'Belum ada / pakai passphrase'}</b></p>
             </div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-              <span class="fp-badge ${ready?'ok':'warn'}">${ready?'🟢 Colab Terhubung':'🟡 Mode Lokal'}</span>
+              <span class="fp-badge ${ready?'ok':'warn'}">${statusBadge}</span>
               <span class="fp-badge ${tok?'ok':'info'}">${tok?'🔐 Token Aktif':'🔑 Passphrase'}</span>
             </div>
           </div>
         </div>
-        <div class="fp-card" style="margin-bottom:14px">
-          <h4>URL Public / Named Tunnel Permanen Google Colab</h4>
-          <p style="font-size:12px;color:#64748b;margin:4px 0 8px">Jalankan notebook <code>colab/portalbelajar_colab_database.ipynb</code> di Google Colab. Isi <code>CF_TUNNEL_TOKEN</code> di Colab + <code>public/colab-config.json</code> agar URL permanen dan semua siswa terhubung otomatis tanpa link baru:</p>
+        <div class="fp-card" style="margin-bottom:14px;border-color:#6366f1">
+          <h4>🔥 Hubungkan Firebase Cloud Firestore (Rekomendasi 24/7 Gratis)</h4>
+          <p style="font-size:12.5px;color:#64748b;margin:4px 0 10px">Buat proyek gratis di <a href="https://console.firebase.google.com/" target="_blank" rel="noopener" style="color:#4f46e5;font-weight:700">Firebase Console</a> → aktifkan <b>Cloud Firestore</b> → buat Web App → tempel <code>firebaseConfig</code> (format JSON atau cuplikan JS langsung dari Firebase Console) di bawah ini:</p>
+          <textarea class="fp-textarea" id="fbCfgInput" rows="6" style="font-family:monospace;font-size:12px" placeholder='const firebaseConfig = {&#10;  apiKey: "AIzaSy...",&#10;  authDomain: "nama-proyek.firebaseapp.com",&#10;  projectId: "nama-proyek",&#10;  storageBucket: "nama-proyek.firebasestorage.app",&#10;  messagingSenderId: "123456789",&#10;  appId: "1:123456789:web:abcdef"&#10;};'>${fbCfg ? esc(JSON.stringify(fbCfg, null, 2)) : ''}</textarea>
+          <div class="fp-row" style="flex-wrap:wrap;gap:8px;margin-top:10px">
+            <button class="fp-btn sm" id="fbSaveBtn">🔥 Hubungkan &amp; Uji Firebase</button>
+            <button class="fp-btn sm ghost" id="cfgSync" ${ready?'':'disabled'}>🔄 Migrasi Data Lokal ke Cloud</button>
+            <button class="fp-btn sm ghost" id="cfgCopyLink" ${shareUrl?'':'disabled'}>📋 Salin Link Auto-Connect</button>
+            <button class="fp-btn sm ghost" id="fbCopyJson" ${fbCfg?'':'disabled'}>📄 Salin firebase-config.json</button>
+            ${fbReady ? `<button class="fp-btn sm danger" id="fbDisconnectBtn">Putuskan Firebase</button>` : ''}
+            ${typeof window.installPortalApp==='function'?`<button class="fp-btn sm ghost" id="cfgPwa">📲 Install PWA</button>`:''}
+          </div>
+          ${shareUrl ? `<div style="font-size:12px;padding:8px 10px;margin-top:10px;border-radius:8px;border:1px solid #e2e8f0;word-break:break-all"><b>Link Auto-Connect Device Lain:</b> <span id="cfgShareTxt">${esc(shareUrl)}</span></div>` : ''}
+          <div id="cfgMsg" style="font-size:12.5px;color:#475569;margin-top:8px"></div>
+        </div>
+        <details class="fp-card" style="margin-bottom:14px">
+          <summary style="cursor:pointer;font-weight:700;font-size:13.5px;color:#334155">⚙️ Opsi Alternatif: Google Colab SQLite Tunnel (?colab=...)</summary>
           <div style="display:grid;gap:10px;margin-top:10px">
             <div><label class="fp-label">URL Server Colab</label><input class="fp-input" id="cfgUrl" value="${esc(colabUrl)}" placeholder="https://db.domainanda.my.id atau https://xxxx.trycloudflare.com"/></div>
             <div class="fp-row" style="flex-wrap:wrap;gap:8px">
-              <button class="fp-btn sm" id="cfgSave">💾 Simpan &amp; Uji Koneksi</button>
+              <button class="fp-btn sm ghost" id="cfgSave">💾 Simpan &amp; Uji Colab</button>
               <button class="fp-btn sm ghost" id="cfgVerify" ${tok&&ready?'':'disabled'}>🔐 Uji Token Sesi</button>
-              <button class="fp-btn sm ghost" id="cfgSync" ${ready?'':'disabled'}>🔄 Migrasi Data Lokal ke Colab</button>
-              <button class="fp-btn sm ghost" id="cfgCopyLink" ${shareUrl?'':'disabled'}>📋 Salin Link Siswa</button>
-              ${typeof window.installPortalApp==='function'?`<button class="fp-btn sm ghost" id="cfgPwa">📲 Install Aplikasi (PWA)</button>`:''}
             </div>
-            ${shareUrl ? `<div style="font-size:12px;padding:8px 10px;border-radius:8px;border:1px solid #e2e8f0;word-break:break-all"><b>Link Auto-Connect Siswa:</b> <span id="cfgShareTxt">${esc(shareUrl)}</span></div>` : ''}
-            <div id="cfgMsg" style="font-size:12.5px;color:#475569"></div>
           </div>
-        </div>
+        </details>
         <div class="fp-card">
           <h4>Ringkasan Data Lokal</h4>
-          <p>Materi: <b>${(LS.get(SK('materi'),[])||[]).length}</b> · Tugas: <b>${(LS.get(SK('tugas'),[])||[]).length}</b> · LKPD: <b>${(LS.get(SK('lkpd'),[])||[]).length}</b> · Quiz: <b>${(LS.get(SK('quiz'),[])||[]).length}</b> · Migrasi Colab: <b>${migrated?'Sudah':'Belum'}</b></p>
+          <p>Materi: <b>${(LS.get(SK('materi'),[])||[]).length}</b> · Tugas: <b>${(LS.get(SK('tugas'),[])||[]).length}</b> · LKPD: <b>${(LS.get(SK('lkpd'),[])||[]).length}</b> · Quiz: <b>${(LS.get(SK('quiz'),[])||[]).length}</b> · Akun: <b>${readCachedAccounts().length}</b> · Status Migrasi: <b>${migrated?'Sudah':'Belum'}</b></p>
         </div>`;
+
+      const msgEl = b.querySelector('#cfgMsg');
+      b.querySelector('#fbSaveBtn').onclick=async()=>{
+        const raw = b.querySelector('#fbCfgInput').value.trim();
+        if(!raw){ msgEl.textContent='Tempel terlebih dahulu konfigurasi Firebase (JSON atau cuplikan JS const firebaseConfig = {...}).'; return; }
+        if(!window.firebaseDb){ msgEl.textContent='⚠️ Modul firebase-client.js belum dimuat.'; return; }
+        msgEl.textContent='⏳ Menghubungkan ke Firebase Firestore...';
+        try{
+          window.firebaseDb.setConfig(raw);
+          const h = await window.firebaseDb.testConnection();
+          const remoteEmpty = !h.updatedAt && (h.counts?.materi||0)===0 && (h.counts?.tugas||0)===0 && (h.counts?.accounts||0)===0;
+          if(remoteEmpty && typeof window.runMigration === 'function'){
+            msgEl.textContent='✅ Firebase terhubung! Database masih kosong — otomatis menyalin data lokal ke Firebase...';
+            await window.runMigration({ force: true, silentIfNoAuth: true });
+          } else {
+            await SharedCatalog.pull(); await Activity.pull();
+            if(ROLE==='guru' && (localStorage.getItem('pb.guru.passphrase') || window.colabDb.getToken())){
+              try{
+                const ac = await window.colabDb.accounts.list(localStorage.getItem('pb.guru.passphrase')||'');
+                if(ac && Array.isArray(ac.accounts)){ localStorage.setItem('pb.accounts.seeded_v2','1'); LS.set('pb.cached.accounts', dedupeAccounts(ac.accounts)); }
+              }catch(_){}
+            }
+          }
+          emitSync();
+          msgEl.textContent='✅ Terhubung ke Firebase Cloud ('+esc(h.projectId)+')! ('+(h.counts?.accounts||0)+' akun, '+(h.counts?.materi||0)+' materi, '+(h.counts?.tugas||0)+' tugas)';
+          setTimeout(()=>FEATURES.pengaturan.render(b), 700);
+        }catch(err){
+          msgEl.textContent='⚠️ Gagal menghubungkan Firebase: ' + (err && err.message ? err.message : err) + ' — pastikan Firestore Rules sudah mengizinkan baca/tulis.';
+        }
+      };
+
+      const discBtn = b.querySelector('#fbDisconnectBtn');
+      if(discBtn){
+        discBtn.onclick=()=>{
+          if(confirm('Putuskan koneksi Firebase dari browser ini? Data di Firebase tetap aman, browser ini kembali ke Mode Lokal.')){
+            window.firebaseDb.setConfig(null);
+            emitSync();
+            FEATURES.pengaturan.render(b);
+          }
+        };
+      }
+
+      const copyJsonBtn = b.querySelector('#fbCopyJson');
+      if(copyJsonBtn && fbCfg){
+        copyJsonBtn.onclick=async()=>{
+          const txt = JSON.stringify(fbCfg, null, 2);
+          try{ await navigator.clipboard.writeText(txt); msgEl.textContent='✅ JSON siap ditempel ke file public/firebase-config.json agar seluruh siswa otomatis tersambung!'; }
+          catch(_){ prompt('Salin JSON ini ke public/firebase-config.json:', txt); }
+        };
+      }
+
       b.querySelector('#cfgSave').onclick=async()=>{
         const u=b.querySelector('#cfgUrl').value.trim();
-        const msgEl=b.querySelector('#cfgMsg');
         if(!window.colabDb) return;
         window.colabDb.setUrl(u);
-        if(!u){ msgEl.textContent='URL Google Colab dikosongkan (kembali ke mode lokal).'; FEATURES.pengaturan.render(b); return; }
+        if(!u){ msgEl.textContent='URL Google Colab dikosongkan.'; FEATURES.pengaturan.render(b); return; }
         msgEl.textContent='⏳ Menguji koneksi ke Google Colab SQLite...';
         try{
           const h=await window.colabDb.testConnection(u);
-          msgEl.textContent='✅ Terhubung ke Google Colab SQLite! Mengambil data terbaru... ('+(h.counts?.accounts||0)+' akun, '+(h.counts?.submissions||0)+' kiriman)';
+          msgEl.textContent='✅ Terhubung ke Google Colab SQLite! ('+(h.counts?.accounts||0)+' akun, '+(h.counts?.submissions||0)+' kiriman)';
           await SharedCatalog.pull(); await Activity.pull(); emitSync();
           setTimeout(()=>FEATURES.pengaturan.render(b), 600);
         }catch(err){ msgEl.textContent='⚠️ URL disimpan, namun server belum merespons: '+(err.message||err); }
@@ -2436,7 +2625,6 @@
       const verBtn=b.querySelector('#cfgVerify');
       if(verBtn && window.colabDb && window.colabDb.auth.verifyToken){
         verBtn.onclick=async()=>{
-          const msgEl=b.querySelector('#cfgMsg');
           msgEl.textContent='⏳ Memeriksa token JWT sesi...';
           try{
             const v=await window.colabDb.auth.verifyToken();
@@ -2449,18 +2637,18 @@
       const copyBtn=b.querySelector('#cfgCopyLink');
       if(copyBtn){
         copyBtn.onclick=async()=>{
-          try{ await navigator.clipboard.writeText(shareUrl); b.querySelector('#cfgMsg').textContent='✅ Link auto-connect siswa disalin!'; }
-          catch(_){ prompt('Salin link ini untuk dibagikan ke siswa:', shareUrl); }
+          try{ await navigator.clipboard.writeText(shareUrl); msgEl.textContent='✅ Link auto-connect disalin! Bagikan ke device lain atau siswa untuk langsung tersinkron.'; }
+          catch(_){ prompt('Salin link ini untuk dibagikan ke device lain:', shareUrl); }
         };
       }
       b.querySelector('#cfgSync').onclick=async()=>{
         if(typeof window.runMigration==='function'){
-          b.querySelector('#cfgMsg').textContent='⏳ Mengirim semua data lokal ke Google Colab SQLite...';
+          msgEl.textContent='⏳ Mengirim semua data lokal ke database Cloud...';
           const res=await window.runMigration({force:true});
           if(res&&res.ok){
-            b.querySelector('#cfgMsg').textContent='✅ Migrasi selesai! Semua data kini tersimpan di Google Colab & Google Drive.';
+            msgEl.textContent='✅ Migrasi selesai! Semua data kini tersimpan di Cloud & siap dibuka di device lain.';
             await SharedCatalog.pull(); await Activity.pull(); emitSync();
-          }else{ b.querySelector('#cfgMsg').textContent='⚠️ Migrasi gagal: '+((res&&res.error)||'Pastikan URL & passphrase guru benar.'); }
+          }else{ msgEl.textContent='⚠️ Migrasi gagal: '+((res&&res.error)||'Pastikan Cloud aktif & passphrase guru benar.'); }
         }
       };
     }
@@ -2701,8 +2889,13 @@
                 const cur = readPractice();
                 cur[sk.id] = new Date().toISOString();
                 LS.set(PRACTICE_KEY, cur);
-                localStorage.setItem('pb.game.xp', String(+(localStorage.getItem('pb.game.xp')||0) + 15));
-                msg.innerHTML = '<span class="fp-badge ok">✅ Tepat! Penguasaan skill naik &amp; +15 XP!</span>';
+                const nextXp = +(localStorage.getItem('pb.game.xp')||0) + 15;
+                localStorage.setItem('pb.game.xp', String(nextXp));
+                try{
+                  const gpEntry = Guard.stampSubmission({ userId: 'me', nama: myName, xp: nextXp, skillPractice: cur, answered: +(localStorage.getItem('pb.game.answered')||0), correct: +(localStorage.getItem('pb.game.correct')||0), at: cur[sk.id] });
+                  Activity.submit('lkpd', 'game-progress', gpEntry);
+                }catch(_){}
+                msg.innerHTML = '<span class="fp-badge ok">✅ Tepat! Penguasaan skill naik &amp; +15 XP tersinkron!</span>';
                 emitSync();
                 setTimeout(() => FEATURES.skill.render(b), 700);
               } else {
@@ -3022,10 +3215,11 @@
 
   // ── Bank Media Sekolah (Upload, Preview & Salin Link Materi) ──
   FEATURES.mediaBank = {
-    ico:'🗂️', title:'Bank Media & Lampiran', sub:'Kelola berkas materi/gambar di Google Colab & pratinjau langsung',
+    ico:'🗂️', title:'Bank Media & Lampiran', sub:'Kelola berkas materi/gambar di Cloud & pratinjau langsung',
     async render(b){
       const myCls = ROLE==='murid' ? (getMyClass()||'ALL') : (this._cls || 'ALL');
       b.innerHTML = `<div class="fp-empty">Memuat daftar media...</div>`;
+      if(window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
       let cloudFiles = [];
       if(window.colabDb && window.colabDb.isReady() && window.colabDb.files && window.colabDb.files.list){
         try{
@@ -3051,10 +3245,12 @@
         });
       });
 
+      const isFb = !!(window.colabDb && window.colabDb.isFirebase && window.colabDb.isFirebase());
+      const storeTitle = isFb ? 'Firebase Cloud' : 'Google Colab / Drive';
       b.innerHTML = `
         ${ROLE==='guru'?`<div class="fp-card" style="margin-bottom:14px">
-          <h4>⬆️ Unggah Media Baru ke Server Google Colab</h4>
-          <p style="font-size:12px;color:#64748b;margin:4px 0 10px">Foto otomatis dikompresi sebelum disimpan agar hemat ruang Drive dan cepat dibuka siswa.</p>
+          <h4>⬆️ Unggah Media Baru ke ${storeTitle}</h4>
+          <p style="font-size:12px;color:#64748b;margin:4px 0 10px">Foto otomatis dikompresi sebelum disimpan agar hemat ruang Cloud dan cepat dibuka siswa dari semua perangkat.</p>
           <div class="fp-row">
             <select class="fp-select" id="mbUpCls" style="width:150px"><option value="ALL">Semua Kelas</option>${ALL_CLASSES.map(c=>`<option value="${c}">${c}</option>`).join('')}</select>
             <input type="file" id="mbUpFile" class="fp-input" style="flex:1;min-width:220px"/>
@@ -3067,16 +3263,17 @@
           <span class="fp-badge info">${cloudFiles.length} Cloud · ${catalogFiles.length} Lampiran Katalog</span>
         </div>
         <div class="fp-card" style="margin-bottom:14px">
-          <h4>☁️ Berkas di Google Colab / Drive (${cloudFiles.length})</h4>
+          <h4>☁️ Berkas di ${storeTitle} (${cloudFiles.length})</h4>
           <div class="fp-list" style="margin-top:10px">
             ${cloudFiles.map((f,idx)=>`<div class="fp-item">
               <div><div class="t">📄 ${esc(f.name)}</div><div class="m">Kelas ${esc(f.kelas||'ALL')} · ${fmtSize(f.size||0)}</div></div>
               <div style="display:flex;gap:6px;flex-wrap:wrap">
                 <button class="fp-btn sm ghost" data-cf="${idx}">👁️ Preview</button>
-                <button class="fp-btn sm ghost" data-cp="${esc(f.viewLink||f.previewLink||'')}">📋 Salin Link</button>
-                <a class="fp-btn sm" href="${esc(f.downloadLink||f.viewLink||'#')}" target="_blank" rel="noopener">⬇️ Unduh</a>
+                ${f.firebaseFile?'':`<button class="fp-btn sm ghost" data-cp="${esc(f.viewLink||f.previewLink||'')}">📋 Salin Link</button>`}
+                <a class="fp-btn sm" href="${esc(f.downloadLink||f.viewLink||'#')}" ${f.firebaseFile?`download="${esc(f.name)}"`:'target="_blank" rel="noopener"'}>⬇️ Unduh</a>
+                ${ROLE==='guru'&&f.id?`<button class="fp-btn sm danger" data-cdel="${esc(f.id)}">Hapus</button>`:''}
               </div>
-            </div>`).join('')||'<div class="fp-empty" style="padding:18px">Belum ada media terunggah ke server Colab.</div>'}
+            </div>`).join('')||'<div class="fp-empty" style="padding:18px">Belum ada media terunggah ke Cloud.</div>'}
           </div>
         </div>
         <div class="fp-card">
@@ -3085,13 +3282,18 @@
             ${catalogFiles.map((f,idx)=>`<div class="fp-item">
               <div><div class="t">${esc(f.name)}</div><div class="m">${esc(f.source)} · ${esc(f.title)} · ${esc(f.kelas)} · ${fmtSize(f.size)}</div></div>
               <button class="fp-btn sm ghost" data-kf="${idx}">👁️ Preview</button>
-            </div>`).join('')||'<div class="fp-empty" style="padding:18px">Belum ada lampiran di katalog lokal.</div>'}
+            </div>`).join('')||'<div class="fp-empty" style="padding:18px">Belum ada lampiran di katalog.</div>'}
           </div>
         </div>`;
       b.querySelector('#mbCls').onchange = e => { this._cls = e.target.value; FEATURES.mediaBank.render(b); };
       b.querySelectorAll('[data-cf]').forEach(btn=>btn.onclick=()=>{
         const f = cloudFiles[+btn.dataset.cf];
-        if(f) openViewer(f.name, {file:{name:f.name,type:f.mimeType,viewLink:f.viewLink,previewLink:f.previewLink,downloadLink:f.downloadLink}, link:f.viewLink});
+        if(f) openViewer(f.name, {file:{id:f.id,name:f.name,type:f.mimeType,firebaseFile:!!f.firebaseFile,data:f.viewLink,viewLink:f.viewLink,previewLink:f.previewLink,downloadLink:f.downloadLink}, link:f.viewLink});
+      });
+      b.querySelectorAll('[data-cdel]').forEach(btn=>btn.onclick=async()=>{
+        if(!confirm('Hapus berkas media ini dari Cloud?')) return;
+        try{ await Drive.remove(btn.dataset.cdel); FEATURES.mediaBank.render(b); }
+        catch(err){ alert('Gagal menghapus: '+(err&&err.message?err.message:err)); }
       });
       b.querySelectorAll('[data-cp]').forEach(btn=>btn.onclick=async()=>{
         const u=btn.dataset.cp; if(!u) return;
@@ -3108,8 +3310,8 @@
           const msg = b.querySelector('#mbMsg');
           const file = inp && inp.files && inp.files[0];
           if(!file) return alert('Pilih berkas terlebih dulu.');
-          if(!window.colabDb || !window.colabDb.isReady()) return alert('Hubungkan server Google Colab SQLite di Cloud & Sync terlebih dahulu.');
-          upBtn.disabled=true; msg.textContent='⏳ Mengunggah berkas ke Google Colab...';
+          if(!window.colabDb || !window.colabDb.isReady()) return alert('Hubungkan Firebase Cloud (atau Google Colab) di menu Cloud & Sync terlebih dahulu.');
+          upBtn.disabled=true; msg.textContent='⏳ Mengunggah berkas ke Cloud...';
           try{
             let targetFile = file;
             if(/^image\/(jpeg|jpg|png|webp)$/i.test(file.type||'')){
@@ -3121,7 +3323,7 @@
             }
             const pass = localStorage.getItem('pb.guru.passphrase')||'';
             await window.colabDb.files.upload(targetFile, b.querySelector('#mbUpCls').value, pass);
-            msg.textContent='✅ Berhasil diunggah ke Google Colab!';
+            msg.textContent='✅ Berhasil diunggah ke Cloud!';
             setTimeout(()=>FEATURES.mediaBank.render(b), 500);
           }catch(e){ msg.textContent='⚠️ Gagal: '+(e.message||e); }
           finally{ upBtn.disabled=false; }
@@ -3260,19 +3462,30 @@
       else guardDeepLink(mc0);
       Promise.all([SharedCatalog.pull(), Activity.pull()]).then(()=>{ emitSync(); FeatureConfig.applySidebarConfig(); });
     } else {
-      // Pastikan guru selalu menarik katalog, aktivitas & daftar akun terbaru dari Colab/server agar isi sama dengan admin
-      Promise.all([SharedCatalog.pull(), Activity.pull()]).then(async ()=>{
-        if(window.colabDb && window.colabDb.isReady() && localStorage.getItem('pb.guru.passphrase')){
-          try{
-            const ac = await window.colabDb.accounts.list(localStorage.getItem('pb.guru.passphrase')||'');
-            if(ac && Array.isArray(ac.accounts)){
+      // Pastikan guru selalu menarik katalog, aktivitas & daftar akun terbaru dari Cloud agar isi sama di semua device.
+      // Jika database Cloud benar-benar baru & masih kosong sementara perangkat ini punya data lokal, migrasi otomatis.
+      (async ()=>{
+        try{
+          if(window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
+          await Promise.all([SharedCatalog.pull(), Activity.pull()]);
+          if(window.colabDb && window.colabDb.isReady() && (localStorage.getItem('pb.guru.passphrase') || (window.colabDb.getToken && window.colabDb.getToken()))){
+            const pass = localStorage.getItem('pb.guru.passphrase')||'';
+            const ac = await window.colabDb.accounts.list(pass).catch(()=>null);
+            const remoteAccounts = (ac && Array.isArray(ac.accounts)) ? ac.accounts : [];
+            const hasRemoteCat = localStorage.getItem('pb.guru.remote_catalog_synced') === '1';
+            const localMat = LS.get('pb.guru.materi',[])||[];
+            const localTug = LS.get('pb.guru.tugas',[])||[];
+            if(!hasRemoteCat && remoteAccounts.length === 0 && (localMat.length > 0 || localTug.length > 0) && typeof window.runMigration === 'function'){
+              const mig = await window.runMigration({ force: true, silentIfNoAuth: true });
+              if(mig && mig.ok) Guard.notify('✅ Data lokal Anda otomatis disinkronkan ke database Cloud!');
+            } else if(ac && Array.isArray(ac.accounts)){
               localStorage.setItem('pb.accounts.seeded_v2','1');
               LS.set('pb.cached.accounts', dedupeAccounts(ac.accounts));
             }
-          }catch(_){}
-        }
+          }
+        }catch(_){}
         emitSync(); FeatureConfig.applySidebarConfig();
-      });
+      })();
       SubAlerts.start();
     }
     FeatureConfig.applySidebarConfig();
