@@ -2229,6 +2229,21 @@
         Masuk ke Portal &rarr;
       </button>
       <a class="forgotlnk" onclick="loginMsg('Hubungi Pak Cisko / Admin sekolah atau Guru pengampu untuk membuat atau mereset password akun NIS Anda.', 'info')">Lupa password? Hubungi administrator</a>
+      <div id="stuChgPwWrap" style="display:none;margin-top:8px;text-align:center">
+        <a class="forgotlnk" style="display:inline;color:#4f46e5;font-weight:700" onclick="toggleStuPwModal()">🔑 Ubah Password Akun Siswa</a>
+        <div id="stuChgPwBox" style="display:none;margin-top:10px;padding:12px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0;text-align:left">
+          <div style="font-size:12.5px;font-weight:700;color:#0f172a;margin-bottom:8px">🔑 Ganti Password Akun Siswa</div>
+          <input id="scpNis" type="text" class="finput" placeholder="NIS (Contoh: 1001)" style="margin-bottom:6px;padding:9px 11px;font-size:13px">
+          <input id="scpCur" type="password" class="finput" placeholder="Password saat ini" style="margin-bottom:6px;padding:9px 11px;font-size:13px">
+          <input id="scpNew" type="password" class="finput" placeholder="Password baru (min. 4 karakter)" style="margin-bottom:6px;padding:9px 11px;font-size:13px">
+          <input id="scpConf" type="password" class="finput" placeholder="Ulangi password baru" style="margin-bottom:8px;padding:9px 11px;font-size:13px">
+          <div id="scpMsg" style="display:none;margin-bottom:8px;padding:7px 10px;border-radius:8px;font-size:12px;font-weight:600"></div>
+          <div style="display:flex;gap:8px">
+            <button type="button" class="btn btn-primary" id="scpSubmitBtn" onclick="doStudentChangePw()" style="flex:1;justify-content:center;padding:9px 12px;font-size:13px;border-radius:9px">Simpan Password Baru</button>
+            <button type="button" class="btn btn-ghost" onclick="toggleStuPwModal(false)" style="padding:9px 12px;font-size:12.5px;border-radius:9px">Batal</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -2307,7 +2322,64 @@
       const lbl = document.getElementById('idLabel'), inp = document.getElementById('loginId');
       if (lbl) lbl.textContent = siswa ? 'NIS (Nomor Induk Siswa)' : (admin ? 'ID tidak diperlukan — cukup password admin' : 'ID tidak diperlukan — cukup password khusus guru');
       if (inp) { inp.placeholder = siswa ? 'Contoh: 1001' : ''; inp.disabled = !siswa; if (!siswa) inp.value = ''; }
+      const chgWrap = document.getElementById('stuChgPwWrap');
+      if (chgWrap) chgWrap.style.display = siswa ? 'block' : 'none';
+      if (!siswa && typeof toggleStuPwModal === 'function') toggleStuPwModal(false);
       if (typeof loginMsg === 'function') loginMsg('');
+    }
+    function toggleStuPwModal(force) {
+      const box = document.getElementById('stuChgPwBox');
+      if (!box) return;
+      const show = typeof force === 'boolean' ? force : (box.style.display === 'none' || !box.style.display);
+      box.style.display = show ? 'block' : 'none';
+      if (show) {
+        const curNis = (document.getElementById('loginId') && document.getElementById('loginId').value || '').trim();
+        const scpNis = document.getElementById('scpNis');
+        if (scpNis && curNis && !scpNis.value) scpNis.value = curNis;
+      }
+      const msg = document.getElementById('scpMsg');
+      if (msg && !show) { msg.style.display = 'none'; msg.textContent = ''; }
+    }
+    async function doStudentChangePw() {
+      const nis = (document.getElementById('scpNis').value || '').trim();
+      const curPw = document.getElementById('scpCur').value || '';
+      const newPw = (document.getElementById('scpNew').value || '').trim();
+      const confPw = (document.getElementById('scpConf').value || '').trim();
+      const msgEl = document.getElementById('scpMsg');
+      const btn = document.getElementById('scpSubmitBtn');
+      const showMsg = (txt, type) => {
+        msgEl.textContent = txt;
+        msgEl.style.display = 'block';
+        msgEl.style.background = type === 'err' ? '#fef2f2' : (type === 'ok' ? '#ecfdf5' : '#eff6ff');
+        msgEl.style.color = type === 'err' ? '#b91c1c' : (type === 'ok' ? '#047857' : '#1d4ed8');
+      };
+      if (!nis) { showMsg('Masukkan NIS terlebih dahulu.', 'err'); return; }
+      if (newPw.length < 4) { showMsg('Password baru minimal 4 karakter.', 'err'); return; }
+      if (newPw !== confPw) { showMsg('Konfirmasi password baru tidak cocok.', 'err'); return; }
+      if (curPw && newPw === curPw) { showMsg('Password baru harus berbeda dari password saat ini.', 'err'); return; }
+      if (window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
+      if (!window.colabDb || !window.colabDb.isReady() || !window.colabDb.auth || !window.colabDb.auth.changeStudentPassword) {
+        showMsg('Database Cloud belum terhubung.', 'err');
+        return;
+      }
+      btn.disabled = true; const prev = btn.textContent; btn.textContent = 'Menyimpan…';
+      showMsg('⏳ Memverifikasi akun & menyimpan password baru…', 'info');
+      try {
+        await window.colabDb.auth.changeStudentPassword(nis, curPw, newPw);
+        document.getElementById('scpCur').value = '';
+        document.getElementById('scpNew').value = '';
+        document.getElementById('scpConf').value = '';
+        const loginId = document.getElementById('loginId');
+        const loginPw = document.getElementById('loginPw');
+        if (loginId) loginId.value = nis;
+        if (loginPw) loginPw.value = '';
+        showMsg('✅ Password berhasil diubah! Sekarang silakan masuk memakai password barumu.', 'ok');
+        loginMsg('✅ Password NIS ' + nis + ' sudah diganti. Silakan masukkan password barumu untuk masuk.', 'ok');
+      } catch (err) {
+        showMsg('⚠️ ' + (err && err.message ? err.message : err), 'err');
+      } finally {
+        btn.disabled = false; btn.textContent = prev;
+      }
     }
 
 

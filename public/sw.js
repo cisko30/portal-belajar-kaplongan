@@ -1,5 +1,5 @@
 /* Service Worker — Portal Belajar SMA NU Kaplongan */
-const CACHE_NAME = 'pb-kaplongan-v11';
+const CACHE_NAME = 'pb-kaplongan-v12';
 const NETWORK_TIMEOUT_MS = 4000;
 const SHELL_ASSETS = [
   '/',
@@ -20,7 +20,7 @@ const SHELL_ASSETS = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS).catch(() => {}))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS).catch(() => { }))
   );
   self.skipWaiting();
 });
@@ -53,7 +53,7 @@ self.addEventListener('fetch', (event) => {
       caches.open(CACHE_NAME).then((cache) =>
         cache.match(req).then((cached) => {
           const fresh = fetch(req).then((res) => {
-            if (res && res.status === 200) cache.put(req, res.clone()).catch(() => {});
+            if (res && res.status === 200) cache.put(req, res.clone()).catch(() => { });
             return res;
           }).catch(() => cached);
           return cached || fresh;
@@ -74,7 +74,7 @@ self.addEventListener('fetch', (event) => {
             settled = true;
             resolve(hit);
           }
-        }).catch(() => {});
+        }).catch(() => { });
       }, NETWORK_TIMEOUT_MS);
 
       fetch(req, { cache: 'no-store' })
@@ -82,7 +82,7 @@ self.addEventListener('fetch', (event) => {
           clearTimeout(timer);
           if (res && res.status === 200) {
             const clone = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, clone)).catch(() => {});
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, clone)).catch(() => { });
           }
           if (!settled) {
             settled = true;

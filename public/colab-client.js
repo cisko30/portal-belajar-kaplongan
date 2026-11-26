@@ -255,6 +255,16 @@
         if (res && res.token) setToken(res.token);
         return res;
       },
+      async changeStudentPassword(nis, currentPassword, newPassword) {
+        if (fb()) return fb().auth.changeStudentPassword(nis, currentPassword, newPassword);
+        const res = await req('/api/student/change-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nis, currentPassword, newPassword })
+        });
+        if (res && res.token) setToken(res.token);
+        return res;
+      },
       async verifyTeacherSession(passphrase) {
         if (fb()) return fb().auth.verifyTeacherSession(passphrase);
         return req('/api/teacher-session', {

@@ -3867,7 +3867,105 @@
     }
   };
 
-  const MURID_MAP = {dashboard:'dashboard','kelas saya':'kelas',materi:'materi',tugas:'tugas',quiz:'quiz',lkpd:'lkpd',nilai:'nilai',jadwal:'jadwal',ai:'ai',pengumuman:'pengumuman','progres saya':'progres_saya','progres':'progres_saya',leaderboard:'leaderboard','bank media':'mediaBank',mediabank:'mediaBank'};
+  // ── Akun & Ubah Password Siswa Sendiri ──
+  FEATURES.akun_saya = {
+    ico:'🔑', title:'Akun & Password Saya', sub:'Kelola profil NIS dan ubah password akunmu sendiri dengan aman',
+    render(b){
+      if(ROLE!=='murid'){
+        b.innerHTML=`<div class="fp-card"><h4>Khusus Akun Siswa</h4><p>Fitur ini digunakan oleh siswa untuk mengganti password akun NIS masing-masing. Untuk mengganti password Admin atau Guru, buka menu <b>Cloud & Sync → Ganti Password Admin & Guru</b>.</p></div>`;
+        return;
+      }
+      const myNis = (localStorage.getItem('pb.murid.nis')||'').trim();
+      const myNama = (localStorage.getItem('pb.murid.nama')||'Siswa').trim();
+      const myCls = getMyClass() || '-';
+      const cloudReady = !!(window.colabDb && window.colabDb.isReady && window.colabDb.isReady());
+      const modeLbl = (window.colabDb && window.colabDb.getModeLabel) ? window.colabDb.getModeLabel() : (cloudReady ? 'Cloud Aktif' : 'Mode Lokal');
+      b.innerHTML=`
+        <div class="fp-card" style="margin-bottom:14px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+            <div>
+              <h4 style="margin-bottom:4px">👤 Profil Akun Siswa</h4>
+              <div style="font-size:13px;color:#475569">Nama: <b>${esc(myNama)}</b> · NIS: <b>${esc(myNis||'Belum masuk dengan NIS')}</b> · Kelas: <b>${esc(myCls)}</b></div>
+            </div>
+            <span class="fp-badge ${cloudReady?'ok':'warn'}">${cloudReady?'🟢':'🟡'} ${esc(modeLbl)}</span>
+          </div>
+        </div>
+        <div class="fp-card">
+          <h4>🔑 Ubah Password Akun Sendiri</h4>
+          <p style="font-size:12.5px;color:#64748b;margin-bottom:12px">Ganti password bawaan dari guru menjadi password pribadimu sendiri. Password baru otomatis dienkripsi <b>PBKDF2-SHA256</b> di Firebase Cloud dan langsung berlaku di semua perangkat.</p>
+          <div style="display:grid;gap:10px;max-width:460px">
+            <div>
+              <label class="fp-label">NIS (Nomor Induk Siswa)</label>
+              <input class="fp-input" id="saNis" value="${esc(myNis)}" ${myNis?'readonly':''} placeholder="Masukkan NIS akunmu"/>
+            </div>
+            <div>
+              <label class="fp-label">Password Saat Ini</label>
+              <input class="fp-input" type="password" id="saCurPw" autocomplete="current-password" placeholder="Masukkan password saat ini"/>
+            </div>
+            <div class="fp-row" style="gap:10px;flex-wrap:wrap">
+              <div style="flex:1;min-width:180px">
+                <label class="fp-label">Password Baru (min. 4 karakter)</label>
+                <input class="fp-input" type="password" id="saNewPw" autocomplete="new-password" placeholder="Masukkan password baru"/>
+              </div>
+              <div style="flex:1;min-width:180px">
+                <label class="fp-label">Ulangi Password Baru</label>
+                <input class="fp-input" type="password" id="saConfPw" autocomplete="new-password" placeholder="Ketik ulang password baru"/>
+              </div>
+            </div>
+            <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#475569;cursor:pointer">
+              <input type="checkbox" id="saShowPw"/> Tampilkan password
+            </label>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px">
+              <button type="button" class="fp-btn" id="saSaveBtn">🔑 Simpan Password Baru</button>
+              <span id="saMsg" style="font-size:12.5px;font-weight:600;color:#475569"></span>
+            </div>
+          </div>
+        </div>`;
+
+      const nisEl = b.querySelector('#saNis');
+      const curEl = b.querySelector('#saCurPw');
+      const newEl = b.querySelector('#saNewPw');
+      const confEl = b.querySelector('#saConfPw');
+      const showEl = b.querySelector('#saShowPw');
+      const btn = b.querySelector('#saSaveBtn');
+      const msg = b.querySelector('#saMsg');
+      const setMsg = (txt, isErr) => { msg.textContent=txt||''; msg.style.color=isErr?'#b91c1c':'#047857'; };
+
+      showEl.onchange = () => {
+        const tp = showEl.checked ? 'text' : 'password';
+        curEl.type = tp; newEl.type = tp; confEl.type = tp;
+      };
+
+      btn.onclick = async () => {
+        const nis = nisEl.value.trim();
+        const curPw = curEl.value;
+        const newPw = newEl.value.trim();
+        const confPw = confEl.value.trim();
+        if(!nis) return setMsg('NIS wajib diisi.', true);
+        if(newPw.length < 4) return setMsg('Password baru minimal 4 karakter.', true);
+        if(newPw !== confPw) return setMsg('Konfirmasi password baru tidak cocok.', true);
+        if(curPw && newPw === curPw) return setMsg('Password baru harus berbeda dari password saat ini.', true);
+        if(window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
+        if(!window.colabDb || !window.colabDb.isReady() || !window.colabDb.auth || !window.colabDb.auth.changeStudentPassword){
+          return setMsg('Database Cloud belum tersambung. Buka kembali halaman ini saat online agar password tersimpan di semua perangkat.', true);
+        }
+        btn.disabled = true; const prev = btn.textContent; btn.textContent = 'Menyimpan…';
+        msg.style.color='#0369a1'; msg.textContent='⏳ Memverifikasi & mengenkripsi password baru…';
+        try{
+          await window.colabDb.auth.changeStudentPassword(nis, curPw, newPw);
+          curEl.value=''; newEl.value=''; confEl.value='';
+          setMsg('✅ Password berhasil diubah! Gunakan password baru ini saat login berikutnya.', false);
+          Guard.notify('✅ Password akun siswa berhasil diubah.');
+        }catch(err){
+          setMsg('⚠️ ' + (err && err.message ? err.message : err), true);
+        }finally{
+          btn.disabled = false; btn.textContent = prev;
+        }
+      };
+    }
+  };
+
+  const MURID_MAP = {dashboard:'dashboard','kelas saya':'kelas',materi:'materi',tugas:'tugas',quiz:'quiz',lkpd:'lkpd',nilai:'nilai',jadwal:'jadwal',ai:'ai',pengumuman:'pengumuman','progres saya':'progres_saya','progres':'progres_saya',leaderboard:'leaderboard','bank media':'mediaBank',mediabank:'mediaBank','akun saya':'akun_saya','akun_saya':'akun_saya','ubah password':'akun_saya','ganti password':'akun_saya',password:'akun_saya'};
 
   // ── Deep-link guard: notifikasi jelas bila murid coba akses kelas lain via URL / hash ──
   // Contoh URL yang dijaga:

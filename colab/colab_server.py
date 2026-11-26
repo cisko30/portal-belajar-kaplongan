@@ -335,6 +335,35 @@ async def student_login(request: Request):
         }
 
 
+@app.post("/api/student/change-password")
+async def student_change_password(request: Request, authorization: Optional[str] = Header(default="")):
+    body = await request.json()
+    nis = str(body.get("nis") or "").strip()
+    cur_pw = str(body.get("currentPassword") or "")
+    new_pw = str(body.get("newPassword") or "").strip()
+    if not nis:
+        raise HTTPException(status_code=400, detail="NIS wajib diisi.")
+    tok = verify_session_token(extract_bearer(authorization))
+    if tok:
+        if tok.get("role") != "siswa" or str(tok.get("sub") or "") != nis:
+            raise HTTPException(status_code=403, detail="Hanya dapat mengubah password akun milik sendiri.")
+    if len(new_pw) < 4 or len(new_pw) > 72:
+        raise HTTPException(status_code=400, detail="Password baru harus 4-72 karakter.")
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM accounts WHERE nis = ?", (nis,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Akun NIS tidak ditemukan.")
+        if row["password_hash"] and (not cur_pw or not verify_pw(cur_pw, row["password_hash"])):
+            raise HTTPException(status_code=401, detail="Password saat ini salah.")
+        if row["password_hash"] and new_pw == cur_pw:
+            raise HTTPException(status_code=400, detail="Password baru harus berbeda dari password saat ini.")
+        ts = now_iso()
+        conn.execute("UPDATE accounts SET password_hash = ?, updated_at = ? WHERE nis = ?", (hash_pw(new_pw), ts, nis))
+        conn.commit()
+        token, exp = create_session_token("siswa", nis)
+        return {"ok": True, "nis": nis, "token": token, "expiresAt": exp, "updatedAt": ts}
+
+
 @app.get("/api/catalog")
 def get_catalog():
     return read_catalog_dict()

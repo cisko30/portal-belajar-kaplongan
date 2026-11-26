@@ -1048,6 +1048,68 @@
         };
       },
 
+      async changeStudentPassword(nis, currentPassword, newPassword) {
+        const cleanNis = String(nis || localStorage.getItem('pb.murid.nis') || '').trim();
+        const curPw = String(currentPassword || '');
+        const newPw = String(newPassword || '').trim();
+        if (!cleanNis) {
+          const err = new Error('NIS akun siswa wajib diisi.');
+          err.status = 400;
+          throw err;
+        }
+        const curTok = await verifySessionToken(getToken());
+        if (curTok) {
+          if (curTok.role !== 'siswa') {
+            const err = new Error('Fitur ubah password ini khusus akun siswa.');
+            err.status = 403;
+            throw err;
+          }
+          if (String(curTok.sub || '') !== cleanNis) {
+            const err = new Error('Kamu hanya dapat mengubah password akun NIS milikmu sendiri.');
+            err.status = 403;
+            throw err;
+          }
+        }
+        if (newPw.length < 4 || newPw.length > 72) {
+          const err = new Error('Password baru harus 4–72 karakter.');
+          err.status = 400;
+          throw err;
+        }
+        const { db, fs } = await ensureFirestore();
+        const ref = fs.doc(db, 'portal_accounts', safeDocId(cleanNis));
+        const snap = await fs.getDoc(ref);
+        if (!snap.exists()) {
+          const err = new Error('Akun NIS tidak ditemukan.');
+          err.status = 404;
+          throw err;
+        }
+        const d = snap.data() || {};
+        if (d.passwordHash) {
+          if (!curPw) {
+            const err = new Error('Password saat ini wajib diisi.');
+            err.status = 401;
+            throw err;
+          }
+          const ok = await verifyPassword(curPw, d.passwordHash);
+          if (!ok) {
+            const err = new Error('Password saat ini salah.');
+            err.status = 401;
+            throw err;
+          }
+          if (newPw === curPw) {
+            const err = new Error('Password baru harus berbeda dari password saat ini.');
+            err.status = 400;
+            throw err;
+          }
+        }
+        const nextHash = await hashPassword(newPw);
+        const ts = new Date().toISOString();
+        await fs.setDoc(ref, { passwordHash: nextHash, updatedAt: ts }, { merge: true });
+        const tok = await createSessionToken('siswa', cleanNis);
+        setToken(tok.token);
+        return { ok: true, nis: cleanNis, token: tok.token, expiresAt: tok.expiresAt, updatedAt: ts };
+      },
+
       async verifyTeacherSession(passphrase) {
         await requireStaff(passphrase, 'guru');
         return { ok: true, role: 'guru' };

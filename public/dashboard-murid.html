@@ -404,6 +404,7 @@ body{
       <div class="nav-item"><i data-lucide="calendar-days" width="16" height="16"></i>Jadwal</div>
       <div class="nav-item"><i data-lucide="bot" width="16" height="16"></i>AI Assistant</div>
       <div class="nav-item"><i data-lucide="bell" width="16" height="16"></i>Pengumuman</div>
+      <div class="nav-item" data-feature="akun_saya"><i data-lucide="key-round" width="16" height="16"></i>Ubah Password 🔑</div>
     </nav>
     <div class="sb-foot">
       <div class="student-card">
@@ -419,7 +420,8 @@ body{
           <div class="bar"><div class="fill"></div></div>
         </div>
       </div>
-      <button id="btnLogout" type="button" style="margin-top:10px;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:9px 12px;border-radius:10px;border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;font:600 13px/1 system-ui,-apple-system,Segoe UI,sans-serif;cursor:pointer"><i data-lucide="log-out" width="15" height="15"></i>Keluar</button>
+      <button id="mBtnUbahPw" type="button" style="margin-top:10px;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:9px 12px;border-radius:10px;border:1px solid var(--bd);background:var(--surf2);color:var(--tx);font:600 13px/1 system-ui,-apple-system,Segoe UI,sans-serif;cursor:pointer"><i data-lucide="key-round" width="15" height="15"></i>Ubah Password</button>
+      <button id="btnLogout" type="button" style="margin-top:8px;width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:9px 12px;border-radius:10px;border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;font:600 13px/1 system-ui,-apple-system,Segoe UI,sans-serif;cursor:pointer"><i data-lucide="log-out" width="15" height="15"></i>Keluar</button>
     </div>
   </aside>
 
@@ -436,6 +438,7 @@ body{
         <div class="tb-btn" id="mBtnSkill" title="Skill &amp; Kompetensi" onclick="window.__fpOpen&&window.__fpOpen('skill')">⚡</div>
         <div class="tb-btn" id="mBtnSearch" title="Cari Materi"><i data-lucide="search" width="16" height="16"></i></div>
         <div class="tb-btn" id="mBtnBell" title="Pengumuman"><i data-lucide="bell" width="16" height="16"></i><span class="dot"></span></div>
+        <div class="tb-btn" id="mBtnKey" title="Ubah Password Akun Saya">🔑</div>
       </div>
     </header>
 
@@ -951,7 +954,7 @@ render();
 
     // Wire interactive triggers across Dashboard Murid
     var bind=function(id,feat){var el=document.getElementById(id);if(el){el.style.cursor='pointer';el.addEventListener('click',function(){if(window.__fpOpen)window.__fpOpen(feat);});}};
-    bind('mBtnSearch','materi'); bind('mBtnBell','pengumuman');
+    bind('mBtnSearch','materi'); bind('mBtnBell','pengumuman'); bind('mBtnKey','akun_saya'); bind('mBtnUbahPw','akun_saya');
     bind('qcTugas','tugas'); bind('qcQuiz','quiz'); bind('qcNilai','nilai'); bind('qcRank','progres_saya');
     bind('mLnkJadwal','jadwal'); bind('mLnkPengumuman','pengumuman');
     document.querySelectorAll('#mTodoList .todo').forEach(function(el,idx){
