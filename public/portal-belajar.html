@@ -2242,8 +2242,8 @@
     }
     function getPortalAuth() {
       const role = readRole();
-      const isStaff = (role === 'guru' || role === 'admin') && !!localStorage.getItem('pb.guru.passphrase');
       const isStudent = (role === 'siswa' || role === 'murid') && !!(localStorage.getItem('pb.murid.nis') || localStorage.getItem('pb.murid.nama'));
+      const isStaff = (role === 'guru' || role === 'admin') && !!(localStorage.getItem('pb.guru.passphrase') || localStorage.getItem('pb.session.token')) && !localStorage.getItem('pb.murid.nis');
       return { role, isStaff, isStudent, loggedIn: isStaff || isStudent };
     }
     function refreshLockState() {
@@ -2531,7 +2531,7 @@
     window.addEventListener('pb:topics', () => { syncCloudTopics(); });
 
     // ==== Editor UI (guru/admin only) ====
-    function isEditor() { const r = localStorage.getItem('userRole'); return r === 'guru' || r === 'admin' }
+    function isEditor() { return getPortalAuth().isStaff; }
     function mountEditorBtn() {
       if (!isEditor()) return;
       if (document.getElementById('edBtn')) return;
@@ -2614,6 +2614,13 @@
       el.style.color = type === 'err' ? '#991b1b' : '#3730a3';
       el.textContent = text;
     }
+    async function sha256StaffHex(pw) {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('pb-staff:' + String(pw || '')));
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+    const OFFLINE_GURU_HASH = '0aa877dd5ee9ef38eaaae498e70def2384f8acfaf06bd4f92a7c49184f31ccb7';
+    const OFFLINE_ADMIN_HASH = 'd4fa7af527597793f94e518b0aa8c37f91c2d78ab26019e7cbd4d3f9e7a01019';
+
     async function doLogin() {
       const active = document.querySelector('.rs.on');
       const role = active ? active.dataset.role : 'siswa';
@@ -2634,7 +2641,10 @@
           loginMsg('Memverifikasi akses guru di ' + engineName + '…');
           try {
             const j = await window.colabDb.auth.teacherLogin(pw);
-            if (!j || !j.ok) { loginMsg((j && j.error) || 'Password guru salah.', 'err'); return; }
+            if (!j || !j.ok) { loginMsg((j && j.error) || 'Akun siswa tidak dapat masuk sebagai guru. Password guru salah.', 'err'); return; }
+            localStorage.removeItem('pb.murid.nis');
+            localStorage.removeItem('pb.murid.nama');
+            localStorage.removeItem('pb.murid.myClass');
             localStorage.setItem('userRole', 'guru');
             localStorage.setItem('pb.guru.passphrase', pw);
             sessionStorage.removeItem('pb.admin.ok');
@@ -2647,7 +2657,10 @@
           loginMsg('Memverifikasi akses admin di ' + engineName + '…');
           try {
             const j = await window.colabDb.auth.adminLogin(pw);
-            if (!j || !j.ok) { loginMsg((j && j.error) || 'Password admin salah.', 'err'); return; }
+            if (!j || !j.ok) { loginMsg((j && j.error) || 'Akun siswa tidak dapat masuk sebagai Admin. Password admin salah.', 'err'); return; }
+            localStorage.removeItem('pb.murid.nis');
+            localStorage.removeItem('pb.murid.nama');
+            localStorage.removeItem('pb.murid.myClass');
             localStorage.setItem('userRole', 'admin');
             sessionStorage.setItem('pb.admin.ok', '1');
             localStorage.setItem('pb.guru.passphrase', pw);
@@ -2679,7 +2692,14 @@
           const r = await fetch('/api/drive/materials?teacher-login=1', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
           const ct = r.headers.get('content-type') || '';
           if (r.status === 404 || (r.ok && !ct.includes('json'))) {
-            // Static deployment fallback tanpa server backend API
+            const h = await sha256StaffHex(pw);
+            if (h !== OFFLINE_GURU_HASH && h !== OFFLINE_ADMIN_HASH) {
+              loginMsg('Akun siswa tidak dapat masuk sebagai guru. Password guru salah.', 'err');
+              return;
+            }
+            localStorage.removeItem('pb.murid.nis');
+            localStorage.removeItem('pb.murid.nama');
+            localStorage.removeItem('pb.murid.myClass');
             localStorage.setItem('userRole', 'guru');
             localStorage.setItem('pb.guru.passphrase', pw);
             sessionStorage.removeItem('pb.admin.ok');
@@ -2688,6 +2708,7 @@
           }
           const j = await r.json().catch(() => ({}));
           if (!r.ok || !j.ok) { loginMsg(j.error || 'Password guru salah.', 'err'); return; }
+          localStorage.removeItem('pb.murid.nis');
           localStorage.setItem('userRole', 'guru');
           localStorage.setItem('pb.guru.passphrase', pw);
           sessionStorage.removeItem('pb.admin.ok');
@@ -2696,7 +2717,7 @@
         return;
       }
 
-      // Admin wajib memakai password khusus yang diverifikasi di server.
+      // Admin wajib memakai password khusus yang diverifikasi.
       if (role === 'admin') {
         if (!pw) { loginMsg('Masukkan password admin.', 'err'); return; }
         loginMsg('Memeriksa password admin…');
@@ -2707,6 +2728,14 @@
           });
           const ct = r.headers.get('content-type') || '';
           if (r.status === 404 || (r.ok && !ct.includes('json'))) {
+            const h = await sha256StaffHex(pw);
+            if (h !== OFFLINE_ADMIN_HASH) {
+              loginMsg('Akun siswa tidak dapat masuk sebagai Admin. Password admin salah.', 'err');
+              return;
+            }
+            localStorage.removeItem('pb.murid.nis');
+            localStorage.removeItem('pb.murid.nama');
+            localStorage.removeItem('pb.murid.myClass');
             localStorage.setItem('userRole', 'admin');
             sessionStorage.setItem('pb.admin.ok', '1');
             localStorage.setItem('pb.guru.passphrase', pw);
@@ -2715,9 +2744,9 @@
           }
           const j = await r.json().catch(() => ({}));
           if (!r.ok || !j.ok) { loginMsg(j.error || 'Password admin salah.', 'err'); return; }
+          localStorage.removeItem('pb.murid.nis');
           localStorage.setItem('userRole', 'admin');
           sessionStorage.setItem('pb.admin.ok', '1');
-          // Password admin juga membuka penyimpanan tugas/materi ke akun siswa.
           localStorage.setItem('pb.guru.passphrase', pw);
           location.href = afterLoginUrl('admin', '/dashboard-guru.html');
         } catch (err) {

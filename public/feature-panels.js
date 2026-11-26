@@ -154,8 +154,15 @@
   overlay.querySelector('.fp-close').addEventListener('click', close);
   document.addEventListener('keydown', e => { if(e.key==='Escape') close(); });
 
+  const STAFF_ONLY_FEATS = new Set(['akun','bank','absensi','progres','laporan','modul','pengaturan']);
   let _currentFeat=null;
   function open(feat){
+    const rawRole = String(localStorage.getItem('userRole')||'').replace(/^"|"$/g,'').trim();
+    if(STAFF_ONLY_FEATS.has(feat) && (ROLE==='murid' || rawRole==='siswa' || rawRole==='murid')){
+      Guard.audit('staff-panel-blocked',{feat, role:rawRole||ROLE});
+      Guard.notify('🚫 Akses ditolak: fitur ini khusus Guru / Admin.','err');
+      return;
+    }
     const def = FEATURES[feat]; if(!def) return;
     _currentFeat = feat;
     document.getElementById('fpIco').textContent = def.ico || '★';
@@ -2557,6 +2564,21 @@
           <div id="cfgMsg" style="font-size:12.5px;color:#475569;margin-top:8px"></div>
         </div>
         <details class="fp-card" style="margin-bottom:14px">
+          <summary style="cursor:pointer;font-weight:700;font-size:13.5px;color:#334155">🔐 Ganti Password Admin &amp; Guru (Enkripsi PBKDF2-SHA256)</summary>
+          <div style="display:grid;gap:10px;margin-top:10px">
+            <p style="font-size:12px;color:#64748b;margin:0">Ubah password bawaan ke password rahasia pribadi Anda agar user Admin/Guru tidak dapat ditebak. Perubahan ini menyimpankan hash PBKDF2-SHA256 tersalt ke Firestore dan langsung menonaktifkan password lama.</p>
+            <div><label class="fp-label">Password Admin Saat Ini (Wajib)</label><input class="fp-input" type="password" id="secCurAdmin" placeholder="Masukkan password Admin saat ini"/></div>
+            <div class="fp-row" style="gap:8px;flex-wrap:wrap">
+              <div style="flex:1;min-width:180px"><label class="fp-label">Password Admin Baru (min. 6 karakter)</label><input class="fp-input" type="password" id="secNewAdmin" placeholder="Kosongkan jika tidak diubah"/></div>
+              <div style="flex:1;min-width:180px"><label class="fp-label">Password Guru Baru (min. 6 karakter)</label><input class="fp-input" type="password" id="secNewGuru" placeholder="Kosongkan jika tidak diubah"/></div>
+            </div>
+            <div class="fp-row" style="gap:8px;align-items:center">
+              <button class="fp-btn sm" id="secSavePw" ${fbReady?'':'disabled'}>🔐 Simpan Password Baru</button>
+              <span id="secMsg" style="font-size:12px;color:#475569"></span>
+            </div>
+          </div>
+        </details>
+        <details class="fp-card" style="margin-bottom:14px">
           <summary style="cursor:pointer;font-weight:700;font-size:13.5px;color:#334155">⚙️ Opsi Alternatif: Google Colab SQLite Tunnel (?colab=...)</summary>
           <div style="display:grid;gap:10px;margin-top:10px">
             <div><label class="fp-label">URL Server Colab</label><input class="fp-input" id="cfgUrl" value="${esc(colabUrl)}" placeholder="https://db.domainanda.my.id atau https://xxxx.trycloudflare.com"/></div>
@@ -2608,6 +2630,26 @@
           const txt = JSON.stringify(fbCfg, null, 2);
           try{ await navigator.clipboard.writeText(txt); msgEl.textContent='✅ JSON siap ditempel ke file public/firebase-config.json agar seluruh siswa otomatis tersambung!'; }
           catch(_){ prompt('Salin JSON ini ke public/firebase-config.json:', txt); }
+        };
+      }
+
+      const secSaveBtn = b.querySelector('#secSavePw');
+      if(secSaveBtn && window.colabDb && window.colabDb.auth && window.colabDb.auth.updateStaffCredentials){
+        secSaveBtn.onclick=async()=>{
+          const curA = b.querySelector('#secCurAdmin').value;
+          const newA = b.querySelector('#secNewAdmin').value;
+          const newG = b.querySelector('#secNewGuru').value;
+          const secMsg = b.querySelector('#secMsg');
+          if(!curA){ secMsg.textContent='Masukkan password Admin saat ini.'; return; }
+          secSaveBtn.disabled=true; secMsg.textContent='⏳ Mengenkripsi PBKDF2-SHA256 & menyimpan ke Firestore...';
+          try{
+            await window.colabDb.auth.updateStaffCredentials(curA, newG, newA);
+            if(newA) localStorage.setItem('pb.guru.passphrase', newA);
+            secMsg.textContent='✅ Password berhasil diperbarui & diamankan! Password bawaan lama kini tidak berlaku lagi.';
+            b.querySelector('#secCurAdmin').value=''; b.querySelector('#secNewAdmin').value=''; b.querySelector('#secNewGuru').value='';
+          }catch(err){
+            secMsg.textContent='⚠️ Gagal: '+(err && err.message ? err.message : err);
+          }finally{ secSaveBtn.disabled=false; }
         };
       }
 

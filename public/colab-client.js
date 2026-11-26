@@ -262,6 +262,17 @@
           headers: { 'x-guru-passphrase': passphrase || '' }
         });
       },
+      async verifyAdminSession(passphrase) {
+        if (fb()) return fb().auth.verifyAdminSession(passphrase);
+        return req('/api/teacher-session', {
+          cache: 'no-store',
+          headers: { 'x-guru-passphrase': passphrase || '' }
+        });
+      },
+      async updateStaffCredentials(currentAdminPass, newGuruPass, newAdminPass) {
+        if (fb()) return fb().auth.updateStaffCredentials(currentAdminPass, newGuruPass, newAdminPass);
+        throw new Error('Ganti password Admin/Guru hanya tersedia saat terhubung ke Firebase Cloud.');
+      },
       async verifyToken() {
         if (fb()) return fb().auth.verifyToken();
         return req('/api/auth/verify', { cache: 'no-store' });

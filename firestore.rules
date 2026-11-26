@@ -45,9 +45,16 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
-    // Pengaturan keamanan (hanya menyimpan SHA-256 hash passphrase guru/admin)
+    // Pengaturan keamanan (menyimpan hash PBKDF2-SHA256 / digest, tak bisa dihapus)
     match /portal_settings/{settingId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if settingId == 'security'
+                    && !exists(/databases/$(database)/documents/portal_settings/security)
+                    && request.resource.data.keys().hasAll(['guruHash', 'adminHash', 'updatedAt']);
+      allow update: if settingId == 'security'
+                    && request.resource.data.prevProof == resource.data.adminHash
+                    && request.resource.data.keys().hasAll(['guruHash', 'adminHash', 'updatedAt']);
+      allow delete: if false;
     }
   }
 }

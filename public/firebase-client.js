@@ -15,8 +15,9 @@
   const CONFIG_LS_KEY = 'pb.firebase.config';
   const TOKEN_KEY = 'pb.session.token';
   const PASS_KEY = 'pb.guru.passphrase';
-  const LEGACY_GURU = 'guru-kaplongan';
-  const LEGACY_ADMIN = 'admin-kaplongan';
+  // Simpan hash kriptografis saja — jangan pernah menaruh password teks polos admin/guru di skrip klien
+  const DEFAULT_GURU_HASH = '0aa877dd5ee9ef38eaaae498e70def2384f8acfaf06bd4f92a7c49184f31ccb7';
+  const DEFAULT_ADMIN_HASH = 'd4fa7af527597793f94e518b0aa8c37f91c2d78ab26019e7cbd4d3f9e7a01019';
   const FIREBASE_SDK_BASE = 'https://www.gstatic.com/firebasejs/11.6.0/';
   const CHUNK_BYTES = 340000; // ~454KB base64 per chunk doc (safely < 1MB Firestore limit)
   const MAX_FILE_BYTES = 8 * 1024 * 1024; // 8 MB max per attachment
@@ -259,9 +260,19 @@
     return out;
   }
 
+  let activeJwtSalt = '';
+
   async function tokenSigningSecret() {
     const pid = (activeConfig && activeConfig.projectId) || 'pb-kaplongan';
-    return sha256Hex('pb-firebase-jwt:' + pid + ':' + ((activeConfig && activeConfig.apiKey) || ''));
+    let salt = activeJwtSalt;
+    if (isValidConfig(activeConfig)) {
+      try {
+        const { db, fs } = await ensureFirestore();
+        const hashes = await getSecurityHashes(db, fs);
+        salt = hashes.jwtSalt || hashes.adminHash || DEFAULT_ADMIN_HASH;
+      } catch (_) {}
+    }
+    return sha256Hex('pb-firebase-jwt-v2:' + pid + ':' + (salt || DEFAULT_ADMIN_HASH));
   }
 
   async function createSessionToken(role, subject, ttlSec) {
@@ -298,46 +309,68 @@
   async function getSecurityHashes(db, fs) {
     const ref = fs.doc(db, 'portal_settings', 'security');
     const snap = await fs.getDoc(ref);
-    const defaultGuruHash = await sha256Hex('pb-staff:' + LEGACY_GURU);
-    const defaultAdminHash = await sha256Hex('pb-staff:' + LEGACY_ADMIN);
     if (snap.exists()) {
       const d = snap.data() || {};
-      return {
-        guruHash: d.guruHash || defaultGuruHash,
-        adminHash: d.adminHash || defaultAdminHash,
+      const out = {
+        guruHash: d.guruHash || DEFAULT_GURU_HASH,
+        adminHash: d.adminHash || DEFAULT_ADMIN_HASH,
+        guruPbkdf2: d.guruPbkdf2 || '',
+        adminPbkdf2: d.adminPbkdf2 || '',
+        jwtSalt: d.jwtSalt || d.adminHash || DEFAULT_ADMIN_HASH,
         seeded: true
       };
+      activeJwtSalt = out.jwtSalt;
+      return out;
     }
-    const payload = { guruHash: defaultGuruHash, adminHash: defaultAdminHash, updatedAt: new Date().toISOString() };
+    const payload = { guruHash: DEFAULT_GURU_HASH, adminHash: DEFAULT_ADMIN_HASH, updatedAt: new Date().toISOString() };
     try { await fs.setDoc(ref, payload); } catch (_) {}
-    return { guruHash: defaultGuruHash, adminHash: defaultAdminHash, seeded: false };
+    return {
+      guruHash: DEFAULT_GURU_HASH,
+      adminHash: DEFAULT_ADMIN_HASH,
+      guruPbkdf2: '',
+      adminPbkdf2: '',
+      jwtSalt: DEFAULT_ADMIN_HASH,
+      seeded: false
+    };
   }
 
-  async function verifyStaffCredential(passphrase, requiredRole) {
+  async function verifyStaffSecret(given, pbkdf2Hash, sha256Hash) {
+    if (!given) return false;
+    if (pbkdf2Hash) return verifyPassword(given, pbkdf2Hash);
+    const givenHash = await sha256Hex('pb-staff:' + given);
+    return timingSafeEqual(givenHash, sha256Hash);
+  }
+
+  async function verifyStaffCredential(passphrase, requiredRole, allowTokenFallback = true) {
     const { db, fs } = await ensureFirestore();
+    const hashes = await getSecurityHashes(db, fs);
     const given = String(passphrase || '');
     if (given) {
-      const hashes = await getSecurityHashes(db, fs);
-      const givenHash = await sha256Hex('pb-staff:' + given);
-      const isAdmin = timingSafeEqual(givenHash, hashes.adminHash) || timingSafeEqual(given, LEGACY_ADMIN);
-      const isGuru = timingSafeEqual(givenHash, hashes.guruHash) || timingSafeEqual(given, LEGACY_GURU);
-      if (requiredRole === 'admin') {
-        if (isAdmin) return 'admin';
-      } else if (isAdmin || isGuru) {
-        return isAdmin ? 'admin' : 'guru';
-      }
+      const [isAdmin, isGuru] = await Promise.all([
+        verifyStaffSecret(given, hashes.adminPbkdf2, hashes.adminHash),
+        verifyStaffSecret(given, hashes.guruPbkdf2, hashes.guruHash)
+      ]);
+      if (requiredRole === 'admin') return isAdmin ? 'admin' : null;
+      return isAdmin ? 'admin' : (isGuru ? 'guru' : null);
     }
+    if (!allowTokenFallback) return null;
     const tok = await verifySessionToken(getToken());
-    if (tok && (tok.role === 'admin' || (requiredRole !== 'admin' && tok.role === 'guru'))) {
+    if (tok && tok.role !== 'siswa' && (tok.role === 'admin' || (requiredRole !== 'admin' && tok.role === 'guru'))) {
       return tok.role;
     }
     return null;
   }
 
-  async function requireStaff(passphrase) {
-    const role = await verifyStaffCredential(passphrase || localStorage.getItem(PASS_KEY) || '', 'guru');
+  async function requireStaff(passphrase, requiredRole, allowTokenFallback = true) {
+    const need = requiredRole === 'admin' ? 'admin' : 'guru';
+    const raw = passphrase !== undefined && passphrase !== null && String(passphrase) !== ''
+      ? String(passphrase)
+      : (allowTokenFallback ? (localStorage.getItem(PASS_KEY) || '') : '');
+    const role = await verifyStaffCredential(raw, need, allowTokenFallback);
     if (!role) {
-      const err = new Error('Passphrase guru / password admin atau token sesi tidak valid.');
+      const err = new Error(need === 'admin'
+        ? 'Akses khusus Admin ditolak. Akun siswa/guru tidak dapat masuk ke Admin.'
+        : 'Passphrase guru / password admin atau token sesi tidak valid.');
       err.status = 401;
       throw err;
     }
@@ -853,7 +886,8 @@
 
     auth: {
       async teacherLogin(password) {
-        const role = await verifyStaffCredential(password, 'guru');
+        const pw = String(password || '');
+        const role = pw ? await verifyStaffCredential(pw, 'guru', false) : null;
         if (!role) {
           const err = new Error('Akun siswa tidak dapat masuk sebagai guru. Password guru/admin salah.');
           err.status = 401;
@@ -866,9 +900,10 @@
       },
 
       async adminLogin(password) {
-        const role = await verifyStaffCredential(password, 'admin');
+        const pw = String(password || '');
+        const role = pw ? await verifyStaffCredential(pw, 'admin', false) : null;
         if (!role) {
-          const err = new Error('Password admin salah.');
+          const err = new Error('Akun siswa/guru tidak dapat masuk sebagai Admin. Password admin salah.');
           err.status = 401;
           throw err;
         }
@@ -912,8 +947,13 @@
       },
 
       async verifyTeacherSession(passphrase) {
-        await requireStaff(passphrase);
-        return { ok: true };
+        await requireStaff(passphrase, 'guru');
+        return { ok: true, role: 'guru' };
+      },
+
+      async verifyAdminSession(passphrase) {
+        await requireStaff(passphrase, 'admin');
+        return { ok: true, role: 'admin' };
       },
 
       async verifyToken() {
@@ -926,18 +966,38 @@
         return { ok: true, role: tok.role, sub: tok.sub, expiresAt: tok.exp };
       },
 
-      async updateStaffCredentials(currentPass, newGuruPass, newAdminPass) {
-        await requireStaff(currentPass);
+      async updateStaffCredentials(currentAdminPass, newGuruPass, newAdminPass) {
+        if (!currentAdminPass) {
+          const err = new Error('Password Admin saat ini wajib diisi.');
+          err.status = 401;
+          throw err;
+        }
+        await requireStaff(currentAdminPass, 'admin', false);
         const { db, fs } = await ensureFirestore();
         const cur = await getSecurityHashes(db, fs);
-        const nextGuruHash = newGuruPass ? await sha256Hex('pb-staff:' + newGuruPass) : cur.guruHash;
-        const nextAdminHash = newAdminPass ? await sha256Hex('pb-staff:' + newAdminPass) : cur.adminHash;
-        await fs.setDoc(fs.doc(db, 'portal_settings', 'security'), {
-          guruHash: nextGuruHash,
-          adminHash: nextAdminHash,
+        const gPass = String(newGuruPass || '').trim();
+        const aPass = String(newAdminPass || '').trim();
+        if (!gPass && !aPass) throw new Error('Isi minimal satu password baru (Admin atau Guru).');
+        if (gPass && gPass.length < 6) throw new Error('Password Guru minimal 6 karakter.');
+        if (aPass && aPass.length < 6) throw new Error('Password Admin minimal 6 karakter.');
+
+        const nextSalt = toHex(crypto.getRandomValues(new Uint8Array(16)));
+        const nextGuruPbkdf2 = gPass ? await hashPassword(gPass) : (cur.guruPbkdf2 || '');
+        const nextAdminPbkdf2 = aPass ? await hashPassword(aPass) : (cur.adminPbkdf2 || '');
+        const payload = {
+          guruHash: gPass ? 'pbkdf2-locked' : cur.guruHash,
+          adminHash: aPass ? 'pbkdf2-locked' : cur.adminHash,
+          guruPbkdf2: nextGuruPbkdf2,
+          adminPbkdf2: nextAdminPbkdf2,
+          jwtSalt: nextSalt,
+          prevProof: cur.adminHash,
           updatedAt: new Date().toISOString()
-        });
-        return { ok: true };
+        };
+        await fs.setDoc(fs.doc(db, 'portal_settings', 'security'), payload);
+        activeJwtSalt = nextSalt;
+        const tok = await createSessionToken('admin', 'admin');
+        setToken(tok.token);
+        return { ok: true, token: tok.token };
       },
 
       signOut() {

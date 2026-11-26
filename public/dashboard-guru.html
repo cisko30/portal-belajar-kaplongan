@@ -43,30 +43,54 @@
 </style>
 <script src="/firebase-client.js"></script>
 <script>
-// Do not render teacher content until server verification succeeds.
+// Do not render teacher/admin content until strict credential & role verification succeeds.
 document.documentElement.style.visibility='hidden';
 (async function(){
+  function clearStaffAndBounce(role){
+    try{
+      localStorage.removeItem('pb.guru.passphrase');
+      localStorage.removeItem('pb.session.token');
+      sessionStorage.removeItem('pb.admin.ok');
+      if(role==='siswa'||role==='murid'){ location.replace('/dashboard-murid.html'); return; }
+      localStorage.removeItem('userRole');
+    }catch(_){}
+    location.replace('/portal-belajar.html');
+  }
+  async function sha256StaffHex(pw){
+    const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('pb-staff:'+String(pw||'')));
+    return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+  }
+  const OFFLINE_GURU_HASH='0aa877dd5ee9ef38eaaae498e70def2384f8acfaf06bd4f92a7c49184f31ccb7';
+  const OFFLINE_ADMIN_HASH='d4fa7af527597793f94e518b0aa8c37f91c2d78ab26019e7cbd4d3f9e7a01019';
   try{
-    const role=localStorage.getItem('userRole'), pass=localStorage.getItem('pb.guru.passphrase')||'';
-    const tok = localStorage.getItem('pb.session.token') || '';
-    if(!['guru','admin'].includes(role)||(!pass && !tok)){
-      location.replace(role==='siswa'||role==='murid'?'/dashboard-murid.html':'/portal-belajar.html');return;
+    const rawRole=(localStorage.getItem('userRole')||'').replace(/^"|"$/g,'').trim();
+    const pass=localStorage.getItem('pb.guru.passphrase')||'';
+    const tok=localStorage.getItem('pb.session.token')||'';
+    const hasStudentSession=!!localStorage.getItem('pb.murid.nis');
+    if(rawRole==='siswa'||rawRole==='murid'||!['guru','admin'].includes(rawRole)||(!pass && !tok)){
+      clearStaffAndBounce(rawRole);return;
     }
     if(window.firebaseDb && window.firebaseDb.whenReady){
       try{ await window.firebaseDb.whenReady(); }catch(_){}
     }
     if(window.firebaseDb && window.firebaseDb.isReady()){
       try{
-        await window.firebaseDb.auth.verifyTeacherSession(pass);
-        document.documentElement.style.visibility='';
-        return;
-      }catch(fbErr){
-        if(fbErr && (fbErr.status===401 || /salah|wajib|kedaluwarsa/i.test(fbErr.message||''))){
-          localStorage.removeItem('pb.guru.passphrase');localStorage.removeItem('pb.session.token');localStorage.removeItem('userRole');
-          location.replace('/portal-belajar.html');return;
+        if(rawRole==='admin') await window.firebaseDb.auth.verifyAdminSession(pass);
+        else await window.firebaseDb.auth.verifyTeacherSession(pass);
+        if(hasStudentSession && !pass){
+          // Jangan biarkan token siswa menyamar sebagai admin/guru
+          const tInfo=await window.firebaseDb.auth.verifyToken().catch(()=>null);
+          if(!tInfo || tInfo.role==='siswa' || (rawRole==='admin' && tInfo.role!=='admin')){
+            clearStaffAndBounce('siswa');return;
+          }
         }
         document.documentElement.style.visibility='';
         return;
+      }catch(fbErr){
+        if(fbErr && (fbErr.status===401 || /salah|wajib|kedaluwarsa|ditolak/i.test(fbErr.message||''))){
+          clearStaffAndBounce(hasStudentSession?'siswa':rawRole);return;
+        }
+        clearStaffAndBounce(rawRole);return;
       }
     }
     const colabUrl = (localStorage.getItem('pb.colab.url') || '').replace(/\/+$/, '');
@@ -77,17 +101,27 @@ document.documentElement.style.visibility='hidden';
       const r = await fetch(endpoint,{cache:'no-store',headers});
       const ct = r.headers.get('content-type') || '';
       const isStatic = !colabUrl && (r.status === 404 || (r.ok && !ct.includes('json')));
-      if(!r.ok && !isStatic){localStorage.removeItem('pb.guru.passphrase');localStorage.removeItem('userRole');location.replace('/portal-belajar.html');return;}
+      if(isStatic){
+        if(hasStudentSession || !pass){ clearStaffAndBounce(hasStudentSession?'siswa':rawRole); return; }
+        const h=await sha256StaffHex(pass);
+        const ok = rawRole==='admin' ? (h===OFFLINE_ADMIN_HASH) : (h===OFFLINE_GURU_HASH || h===OFFLINE_ADMIN_HASH);
+        if(!ok){ clearStaffAndBounce(rawRole); return; }
+        document.documentElement.style.visibility='';
+        return;
+      }
+      if(!r.ok){ clearStaffAndBounce(hasStudentSession?'siswa':rawRole); return; }
       document.documentElement.style.visibility='';
     } catch(netErr) {
-      // Pada static deployment / Colab tidur tanpa server aktif
-      if(['guru','admin'].includes(role) && (pass || tok)) {
-        document.documentElement.style.visibility='';
-      } else {
-        location.replace('/portal-belajar.html');
+      if(!hasStudentSession && ['guru','admin'].includes(rawRole) && pass){
+        const h=await sha256StaffHex(pass);
+        if(rawRole==='admin' ? h===OFFLINE_ADMIN_HASH : (h===OFFLINE_GURU_HASH||h===OFFLINE_ADMIN_HASH)){
+          document.documentElement.style.visibility='';
+          return;
+        }
       }
+      clearStaffAndBounce(hasStudentSession?'siswa':rawRole);
     }
-  }catch(e){location.replace('/portal-belajar.html');}
+  }catch(e){clearStaffAndBounce('portal');}
 })();
 </script>
 <!-- skill:libraries -->

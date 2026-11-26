@@ -344,14 +344,6 @@
         <button type="button" onclick="promptColabConfig()" style="background:#4f46e5;color:#fff;border:none;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:700;cursor:pointer;">Atur Cloud</button>
       </div>
 
-      <div style="margin-top:14px;padding:12px;background:#f8fafc;border:1px dashed #cbd5e1;border-radius:12px;text-align:center;">
-        <span style="font-size:11.5px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;">Akses Cepat Demo:</span>
-        <div style="display:flex;gap:8px;margin-top:8px;">
-          <button type="button" class="auth-oauth-btn" style="flex:1;margin-top:0;padding:8px;font-size:12px;justify-content:center;" onclick="quickLogin('siswa')">🎓 Masuk Siswa (X-1)</button>
-          <button type="button" class="auth-oauth-btn" style="flex:1;margin-top:0;padding:8px;font-size:12px;justify-content:center;" onclick="quickLogin('guru')">👨‍🏫 Masuk Guru</button>
-        </div>
-      </div>
-
       <div class="auth-footer">
         <p><a href="/portal-belajar.html">&larr; Kembali ke Beranda Portal Belajar</a></p>
       </div>
@@ -402,6 +394,13 @@
       el.textContent = '';
     }
 
+    async function sha256StaffHex(pw) {
+      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('pb-staff:' + String(pw || '')));
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+    const OFFLINE_GURU_HASH = '0aa877dd5ee9ef38eaaae498e70def2384f8acfaf06bd4f92a7c49184f31ccb7';
+    const OFFLINE_ADMIN_HASH = 'd4fa7af527597793f94e518b0aa8c37f91c2d78ab26019e7cbd4d3f9e7a01019';
+
     async function handleLogin(e) {
       e.preventDefault();
       clearMsg();
@@ -417,7 +416,10 @@
         if (window.colabDb && window.colabDb.isReady()) {
           if (currentRole === 'guru') {
             const j = await window.colabDb.auth.teacherLogin(pw);
-            if (!j || !j.ok) throw new Error((j && j.error) || 'Password guru salah.');
+            if (!j || !j.ok) throw new Error((j && j.error) || 'Akun siswa tidak dapat masuk sebagai Guru. Password guru salah.');
+            localStorage.removeItem('pb.murid.nis');
+            localStorage.removeItem('pb.murid.nama');
+            localStorage.removeItem('pb.murid.myClass');
             localStorage.setItem('userRole', 'guru');
             localStorage.setItem('pb.guru.passphrase', pw);
             sessionStorage.removeItem('pb.admin.ok');
@@ -425,7 +427,10 @@
             location.href = '/dashboard-guru.html';
           } else if (currentRole === 'admin') {
             const j = await window.colabDb.auth.adminLogin(pw);
-            if (!j || !j.ok) throw new Error((j && j.error) || 'Password admin salah.');
+            if (!j || !j.ok) throw new Error((j && j.error) || 'Akun siswa tidak dapat masuk sebagai Admin. Password admin salah.');
+            localStorage.removeItem('pb.murid.nis');
+            localStorage.removeItem('pb.murid.nama');
+            localStorage.removeItem('pb.murid.myClass');
             localStorage.setItem('userRole', 'admin');
             sessionStorage.setItem('pb.admin.ok', '1');
             localStorage.setItem('pb.guru.passphrase', pw);
@@ -446,7 +451,7 @@
           }
           return;
         } else {
-          // Fallback legacy local auth via /api/drive/materials
+          // Fallback legacy local auth via /api/drive/materials (verifikasi hash bila mode statis tanpa API)
           if (currentRole === 'guru') {
             const r = await fetch('/api/drive/materials?teacher-login=1', {
               method: 'POST',
@@ -455,13 +460,20 @@
             });
             const ct = r.headers.get('content-type') || '';
             if (r.status === 404 || (r.ok && !ct.includes('json'))) {
+              const h = await sha256StaffHex(pw);
+              if (h !== OFFLINE_GURU_HASH && h !== OFFLINE_ADMIN_HASH) throw new Error('Password guru salah. Akun siswa tidak dapat masuk sebagai Guru.');
+              localStorage.removeItem('pb.murid.nis');
+              localStorage.removeItem('pb.murid.nama');
+              localStorage.removeItem('pb.murid.myClass');
               localStorage.setItem('userRole', 'guru');
               localStorage.setItem('pb.guru.passphrase', pw);
+              sessionStorage.removeItem('pb.admin.ok');
               location.href = '/dashboard-guru.html';
               return;
             }
             const j = await r.json().catch(() => ({}));
             if (!r.ok || !j.ok) throw new Error(j.error || 'Password guru salah.');
+            localStorage.removeItem('pb.murid.nis');
             localStorage.setItem('userRole', 'guru');
             localStorage.setItem('pb.guru.passphrase', pw);
             location.href = '/dashboard-guru.html';
@@ -473,6 +485,11 @@
             });
             const ct = r.headers.get('content-type') || '';
             if (r.status === 404 || (r.ok && !ct.includes('json'))) {
+              const h = await sha256StaffHex(pw);
+              if (h !== OFFLINE_ADMIN_HASH) throw new Error('Password admin salah. Akun siswa tidak dapat masuk sebagai Admin.');
+              localStorage.removeItem('pb.murid.nis');
+              localStorage.removeItem('pb.murid.nama');
+              localStorage.removeItem('pb.murid.myClass');
               localStorage.setItem('userRole', 'admin');
               sessionStorage.setItem('pb.admin.ok', '1');
               localStorage.setItem('pb.guru.passphrase', pw);
@@ -481,6 +498,7 @@
             }
             const j = await r.json().catch(() => ({}));
             if (!r.ok || !j.ok) throw new Error(j.error || 'Password admin salah.');
+            localStorage.removeItem('pb.murid.nis');
             localStorage.setItem('userRole', 'admin');
             sessionStorage.setItem('pb.admin.ok', '1');
             localStorage.setItem('pb.guru.passphrase', pw);
@@ -493,6 +511,8 @@
             });
             const ct = r.headers.get('content-type') || '';
             if (r.status === 404 || (r.ok && !ct.includes('json'))) {
+              localStorage.removeItem('pb.guru.passphrase');
+              sessionStorage.removeItem('pb.admin.ok');
               localStorage.setItem('userRole', 'siswa');
               localStorage.setItem('pb.murid.nis', input);
               localStorage.setItem('pb.murid.nama', 'Siswa ' + input);
@@ -503,6 +523,8 @@
             const j = await r.json().catch(() => ({}));
             if (!r.ok || !j.ok) throw new Error(j.error || 'NIS atau password salah.');
             const a = j.account || {};
+            localStorage.removeItem('pb.guru.passphrase');
+            sessionStorage.removeItem('pb.admin.ok');
             localStorage.setItem('userRole', 'siswa');
             localStorage.setItem('pb.murid.nis', a.nis || input);
             localStorage.setItem('pb.murid.nama', a.nama || 'Siswa');
@@ -621,20 +643,6 @@
     updateColabBadge();
     if (window.colabDb && window.colabDb.whenReady) {
       window.colabDb.whenReady().then(updateColabBadge).catch(() => {});
-    }
-
-    function quickLogin(role) {
-      if (role === 'siswa') {
-        localStorage.setItem('userRole', 'siswa');
-        localStorage.setItem('pb.murid.nis', '1001');
-        localStorage.setItem('pb.murid.nama', 'Ahmad Fauzi');
-        localStorage.setItem('pb.murid.myClass', JSON.stringify('X-1'));
-        location.href = '/dashboard-murid.html';
-      } else {
-        localStorage.setItem('userRole', 'guru');
-        localStorage.setItem('pb.guru.passphrase', 'guru-kaplongan');
-        location.href = '/dashboard-guru.html';
-      }
     }
   </script>
 </body>

@@ -827,9 +827,13 @@ function bos(){
 const GAMES={gold,balon,cocok,tikus,roket,candy,fish,cyber,petualangan,menara,roda,bos};
 /* ── Kelola Game (Admin & Guru) ── */
 async function manage(){
-  if(!['guru','admin'].includes(localStorage.getItem('userRole'))){location.replace('/dashboard-murid.html');return;}
+  const rawRole=String(rd('userRole')||'').replace(/^"|"$/g,'').trim();
+  const hasStudent=!!localStorage.getItem('pb.murid.nis');
+  if(!['guru','admin'].includes(rawRole) || (hasStudent && !localStorage.getItem('pb.guru.passphrase'))){location.replace('/dashboard-murid.html');return;}
   const pass=localStorage.getItem('pb.guru.passphrase')||'';
-  if(!pass){location.replace('/portal-belajar.html');return;}
+  const tok=localStorage.getItem('pb.session.token')||'';
+  if(!pass && !tok){location.replace('/portal-belajar.html');return;}
+  if(window.colabDb && window.colabDb.whenReady){ try{ await window.colabDb.whenReady(); }catch(_){} }
   const fetchCatalog=async()=>{
     if(window.colabDb && window.colabDb.isReady()){
       try{ return await window.colabDb.catalog.pull(); }catch(_){}
@@ -843,12 +847,28 @@ async function manage(){
   };
   let cat;try{
     if(window.colabDb && window.colabDb.isReady()){
-      await window.colabDb.auth.verifyTeacherSession(pass).catch(e=>{if(e&&e.status===401){localStorage.removeItem('pb.guru.passphrase');location.replace('/portal-belajar.html');throw e;}});
+      const checkFn = (rawRole==='admin' && window.colabDb.auth.verifyAdminSession)
+        ? window.colabDb.auth.verifyAdminSession(pass)
+        : window.colabDb.auth.verifyTeacherSession(pass);
+      await checkFn.catch(e=>{
+        if(e&&e.status===401){
+          localStorage.removeItem('pb.guru.passphrase');localStorage.removeItem('pb.session.token');sessionStorage.removeItem('pb.admin.ok');
+          location.replace(hasStudent?'/dashboard-murid.html':'/portal-belajar.html');
+          throw e;
+        }
+      });
     } else {
       const auth=await fetch('/api/drive/materials?teacher-session=1',{cache:'no-store',headers:{'x-guru-passphrase':pass}});
       const ct=auth.headers.get('content-type')||'';
       const isStatic=(auth.status===404 || (auth.ok && !ct.includes('json')));
-      if(!auth.ok && !isStatic){localStorage.removeItem('pb.guru.passphrase');location.replace('/portal-belajar.html');return;}
+      if(isStatic){
+        const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('pb-staff:'+pass));
+        const h=Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+        const ok = rawRole==='admin'
+          ? h==='d4fa7af527597793f94e518b0aa8c37f91c2d78ab26019e7cbd4d3f9e7a01019'
+          : (h==='0aa877dd5ee9ef38eaaae498e70def2384f8acfaf06bd4f92a7c49184f31ccb7' || h==='d4fa7af527597793f94e518b0aa8c37f91c2d78ab26019e7cbd4d3f9e7a01019');
+        if(!ok || hasStudent){ localStorage.removeItem('pb.guru.passphrase'); location.replace(hasStudent?'/dashboard-murid.html':'/portal-belajar.html'); return; }
+      } else if(!auth.ok){localStorage.removeItem('pb.guru.passphrase');location.replace('/portal-belajar.html');return;}
     }
     cat=await fetchCatalog();
   }catch(_){return app.innerHTML='<h2>Gagal memuat katalog. Silakan muat ulang.</h2>'}
