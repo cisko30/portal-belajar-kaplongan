@@ -1,5 +1,5 @@
 /* Service Worker — Portal Belajar SMA NU Kaplongan */
-const CACHE_NAME = 'pb-kaplongan-v13';
+const CACHE_NAME = 'pb-kaplongan-v14';
 const NETWORK_TIMEOUT_MS = 4000;
 const SHELL_ASSETS = [
   '/',

@@ -193,32 +193,42 @@ body{
 /* header hero */
 .hero{
   background:linear-gradient(135deg, oklch(50% 0.23 262), oklch(44% 0.19 243));
-  border-radius:22px;padding:28px 30px;position:relative;overflow:hidden;color:var(--surf);margin-bottom:24px
+  border-radius:16px;padding:16px 22px;position:relative;overflow:hidden;color:var(--surf);margin-bottom:18px
 }
 .hero::before{
-  content:'';position:absolute;right:-10%;top:-30%;width:320px;height:320px;border-radius:50%;background:oklch(70% 0.15 262 / .25)
+  content:'';position:absolute;right:-8%;top:-40%;width:240px;height:240px;border-radius:50%;background:oklch(70% 0.15 262 / .22)
 }
 .hero::after{
-  content:'';position:absolute;left:40%;bottom:-45%;width:260px;height:260px;border-radius:50%;background:oklch(34% 0.18 243 / .35)
+  content:'';position:absolute;left:42%;bottom:-55%;width:200px;height:200px;border-radius:50%;background:oklch(34% 0.18 243 / .3)
 }
-.hero-inner{position:relative;z-index:1;display:grid;grid-template-columns:1.2fr .8fr;gap:20px;align-items:center}
-.hero h1{font-size:clamp(24px,3vw,34px);font-weight:800;line-height:1.12;margin-bottom:10px;text-wrap:balance}
-.hero p{font-size:14px;color:oklch(91% 0.02 262);max-width:520px;line-height:1.75;margin-bottom:20px}
-.hero-meta{display:flex;gap:20px;flex-wrap:wrap}
-.hm{display:flex;flex-direction:column;gap:2px}
-.hm-v{font-size:24px;font-weight:800;line-height:1;color:var(--surf);font-variant-numeric:tabular-nums}
-.hm-l{font-size:11.5px;color:oklch(88% 0.02 262)}
+.hero-inner{position:relative;z-index:1;display:grid;grid-template-columns:1.35fr .65fr;gap:16px;align-items:center}
+.hero h1{font-size:clamp(18px,1.9vw,22px);font-weight:800;line-height:1.25;margin-bottom:8px;text-wrap:balance}
+.hero-quote{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  font-size:12.8px;color:oklch(96% 0.015 262);max-width:600px;line-height:1.45;
+  margin-bottom:12px;padding:8px 12px;border-radius:10px;
+  background:oklch(100% 0.002 262 / .12);border:1px solid oklch(100% 0.002 262 / .18)
+}
+.hero-quote-btn{
+  border:0;background:oklch(100% 0.002 262 / .16);color:#fff;border-radius:7px;
+  padding:3px 7px;font-size:11px;cursor:pointer;flex-shrink:0;line-height:1.2
+}
+.hero-quote-btn:hover{background:oklch(100% 0.002 262 / .28)}
+.hero-meta{display:flex;gap:18px;flex-wrap:wrap}
+.hm{display:flex;flex-direction:column;gap:1px}
+.hm-v{font-size:18px;font-weight:800;line-height:1.1;color:var(--surf);font-variant-numeric:tabular-nums}
+.hm-l{font-size:11px;color:oklch(88% 0.02 262)}
 .hero-card{
   background:oklch(100% 0.002 262 / .14);
   border:1px solid oklch(100% 0.002 262 / .18);
-  border-radius:18px;padding:18px;backdrop-filter:blur(8px)
+  border-radius:14px;padding:13px 15px;backdrop-filter:blur(8px)
 }
-.hc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
-.hc-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:oklch(88% 0.02 262);font-weight:700}
-.hc-score{font-size:28px;font-weight:800;color:var(--surf);font-variant-numeric:tabular-nums}
-.hc-badge{padding:4px 10px;border-radius:99px;background:oklch(95% 0.04 148 / .18);color:oklch(95% 0.03 148);font-size:11px;font-weight:700}
-.hc-list{display:flex;flex-direction:column;gap:8px}
-.hc-row{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:oklch(90% 0.02 262)}
+.hc-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.hc-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:oklch(88% 0.02 262);font-weight:700}
+.hc-score{font-size:21px;font-weight:800;color:var(--surf);font-variant-numeric:tabular-nums}
+.hc-badge{padding:3px 9px;border-radius:99px;background:oklch(95% 0.04 148 / .18);color:oklch(95% 0.03 148);font-size:10.5px;font-weight:700}
+.hc-list{display:flex;flex-direction:column;gap:6px}
+.hc-row{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:oklch(90% 0.02 262)}
 .hc-bar{height:5px;background:oklch(100% 0.002 262 / .15);border-radius:99px;overflow:hidden;margin-top:4px}
 .hc-fill{height:100%;border-radius:99px}
 
@@ -446,8 +456,11 @@ body{
       <section class="hero">
         <div class="hero-inner">
           <div>
-            <h1>Hai Siswa, lanjutkan belajarmu. Hari ini ada tugas dan quiz yang jangan kamu lewatkan.</h1>
-            <p>Semua yang perlu kamu cek sudah dikumpulkan di sini: jadwal hari ini, tugas yang belum selesai, progres nilai, leaderboard, dan pengumuman terbaru.</p>
+            <h1>Hai Siswa, terus semangat belajar hari ini! ✨</h1>
+            <div class="hero-quote">
+              <span id="mHeroQuote">💡 Ilmu yang dipelajari dengan tekun hari ini adalah bekal terbaik untuk masa depanmu.</span>
+              <button type="button" class="hero-quote-btn" id="mNextQuote" title="Ganti kutipan motivasi">🔄</button>
+            </div>
             <div class="hero-meta">
               <div class="hm"><span class="hm-v">–</span><span class="hm-l">Rata-rata nilai</span></div>
               <div class="hm"><span class="hm-v">–</span><span class="hm-l">Kehadiran</span></div>
@@ -856,9 +869,27 @@ render();
       setText('.student-meta', (kelas ? 'Kelas '+kelas : 'Kelas –') + (mapel ? ' · '+mapel : ''));
       setText('#mClassChip', kelas ? 'Kelas '+kelas : 'Kelas –');
       var h = document.querySelector('.hero h1');
-      if(h) h.textContent = 'Hai '+(first||'Siswa')+', lanjutkan belajarmu. Hari ini ada tugas dan quiz yang jangan kamu lewatkan.';
+      if(h) h.textContent = 'Hai '+(first||'Siswa')+', tetap semangat belajar hari ini! ✨';
     }
     paintStudentIdentity();
+
+    var MOTIVATIONS = [
+      '💡 "Ilmu yang dipelajari dengan tekun hari ini adalah bekal terbaik untuk masa depanmu."',
+      '🚀 "Langkah kecil yang konsisten setiap hari akan membawamu pada prestasi besar."',
+      '🧠 "Jangan takut salah saat mencoba — setiap latihan membuat logikamu semakin tajam."',
+      '💻 "Menguasai teknologi dan kecerdasan artifisial dimulai dari rasa ingin tahu dan kebiasaan mencoba."',
+      '🌟 "Bukan seberapa cepat kamu mengerti, tapi seberapa pantang menyerah kamu terus belajar."',
+      '📚 "Tugas yang selesai hari ini adalah ketenangan dan rasa bangga untuk esok hari."',
+      '🔥 "Disiplin belajar sekarang adalah kunci membuka banyak kesempatan di masa depan."'
+    ];
+    var qIdx = (new Date().getDate()) % MOTIVATIONS.length;
+    var qEl = document.getElementById('mHeroQuote');
+    var qBtn = document.getElementById('mNextQuote');
+    if(qEl) qEl.textContent = MOTIVATIONS[qIdx];
+    if(qBtn) qBtn.addEventListener('click', function(){
+      qIdx = (qIdx + 1) % MOTIVATIONS.length;
+      if(qEl) qEl.textContent = MOTIVATIONS[qIdx];
+    });
 
     // Tanggal hari ini (bukan tanggal contoh).
     var now = new Date();
