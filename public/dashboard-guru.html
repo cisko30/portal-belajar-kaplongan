@@ -1335,7 +1335,17 @@ setTimeout(()=>{if(window.lucide)lucide.createIcons()},100);
       try{ data.activity = await window.colabDb.activity.pull(); pulledRemote=true; }catch(e){}
       var pc=localStorage.getItem('pb.guru.passphrase')||'';
       var tok=(window.colabDb.getToken && window.colabDb.getToken())||'';
-      if(pc || tok){ try{ var ac=await window.colabDb.accounts.list(pc); data.accounts=ac.accounts||[]; try{localStorage.setItem('pb.cached.accounts',JSON.stringify(data.accounts));localStorage.setItem('pb.accounts.seeded_v2','1');}catch(_){} }catch(e){} }
+      if(pc || tok){
+        try{
+          var ac=await window.colabDb.accounts.list(pc);
+          var remAcc=(ac&&Array.isArray(ac.accounts))?ac.accounts:[];
+          if(remAcc.length>0 || localStorage.getItem('pb.guru.remote_accounts_synced')==='1'){
+            data.accounts=remAcc;
+            if(remAcc.length>0) try{localStorage.setItem('pb.guru.remote_accounts_synced','1');}catch(_){}
+            try{localStorage.setItem('pb.cached.accounts',JSON.stringify(data.accounts));localStorage.setItem('pb.accounts.seeded_v2','1');}catch(_){}
+          }
+        }catch(e){}
+      }
     } else {
       try{var r=await fetch('/api/drive/materials?catalog=1',{cache:'no-store'});if(r.ok && (r.headers.get('content-type')||'').indexOf('json')>=0){data.catalog=await r.json();pulledRemote=true;}}catch(e){}
       try{var r2=await fetch('/api/drive/materials?activity=1',{cache:'no-store'});if(r2.ok && (r2.headers.get('content-type')||'').indexOf('json')>=0){data.activity=await r2.json();pulledRemote=true;}}catch(e){}
@@ -1343,8 +1353,8 @@ setTimeout(()=>{if(window.lucide)lucide.createIcons()},100);
       if(p){try{var r3=await fetch('/api/drive/materials?accounts=1',{headers:{'x-guru-passphrase':p},cache:'no-store'});if(r3.ok && (r3.headers.get('content-type')||'').indexOf('json')>=0){data.accounts=(await r3.json()).accounts||[];}}catch(e){}}
     }
     var remoteCatEmpty = !data.catalog || (!((data.catalog.materi||[]).length) && !((data.catalog.tugas||[]).length) && !((data.catalog.lkpd||[]).length) && !((data.catalog.quiz||[]).length) && !((data.catalog.pengumuman||[]).length));
-    var remoteSynced = localStorage.getItem('pb.guru.remote_catalog_synced') === '1';
-    if(!data.catalog || (!pulledRemote && remoteCatEmpty) || (pulledRemote && remoteCatEmpty && !remoteSynced)){
+    var remoteCatSynced = localStorage.getItem('pb.guru.remote_catalog_synced') === '1';
+    if(!data.catalog || (!pulledRemote && remoteCatEmpty) || (pulledRemote && remoteCatEmpty && !remoteCatSynced)){
       data.catalog={
         materi:lsJson('pb.guru.materi',[]),
         tugas:lsJson('pb.guru.tugas',[]),
@@ -1354,7 +1364,8 @@ setTimeout(()=>{if(window.lucide)lucide.createIcons()},100);
       };
     }
     var remoteActEmpty = !data.activity || (!Object.keys(data.activity.tugas||{}).length && !Object.keys(data.activity.lkpd||{}).length && !Object.keys(data.activity.quiz||{}).length);
-    if(!data.activity || (!pulledRemote && remoteActEmpty) || (pulledRemote && remoteActEmpty && !remoteSynced)){
+    var remoteActSynced = localStorage.getItem('pb.guru.remote_activity_synced') === '1';
+    if(!data.activity || (!pulledRemote && remoteActEmpty) || (pulledRemote && remoteActEmpty && !remoteActSynced)){
       data.activity={
         tugas:lsJson('pb.submissions.tugas',{}),
         lkpd:lsJson('pb.submissions.lkpd',{}),
@@ -1362,7 +1373,8 @@ setTimeout(()=>{if(window.lucide)lucide.createIcons()},100);
         absensi:lsJson('pb.shared.absensi',{})
       };
     }
-    if(!data.accounts || (!data.accounts.length && !remoteSynced)){
+    var remoteAccSynced = localStorage.getItem('pb.guru.remote_accounts_synced') === '1';
+    if(!data.accounts || (!data.accounts.length && !remoteAccSynced)){
       var cached=lsJson('pb.cached.accounts',null);
       if(Array.isArray(cached) && cached.length) data.accounts=cached;
     }

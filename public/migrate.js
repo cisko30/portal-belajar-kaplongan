@@ -87,6 +87,7 @@
     }
 
     const payload = {
+      preserveRemote: Boolean(opts.preserveRemote),
       catalog: {
         materi: readJSON('pb.guru.materi', []),
         tugas: readJSON('pb.guru.tugas', []),
@@ -107,6 +108,10 @@
         localStorage.setItem(MIGRATION_KEY, 'done');
         localStorage.setItem('pb.migrated.colab.v1', 'done');
         localStorage.setItem('pb.guru.remote_catalog_synced', '1');
+        if (payload.accounts.length > 0) localStorage.setItem('pb.guru.remote_accounts_synced', '1');
+        if (Object.keys(payload.submissions).length > 0 || Object.keys(payload.absensi).length > 0) {
+          localStorage.setItem('pb.guru.remote_activity_synced', '1');
+        }
         if (typeof window.__fpSync === 'function') await window.__fpSync();
       }
       return res || { ok: true };

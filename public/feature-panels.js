@@ -500,8 +500,16 @@
           FEATURES['custom:' + m.id] = {
             ico: m.ico || '✨', title: m.title || 'Fitur Kustom', sub: m.sub || 'Modul tambahan Portal Belajar',
             render(body){
+              const cfgCur = FeatureConfig.get();
+              const notesMap = (cfgCur.customNotes && typeof cfgCur.customNotes === 'object') ? cfgCur.customNotes : {};
               const notesKey = 'pb.custom.notes.' + m.id;
-              const notes = LS.get(notesKey, []);
+              const notes = Array.isArray(notesMap[m.id]) ? notesMap[m.id].slice() : (LS.get(notesKey, []) || []);
+              const saveNotes = (next) => {
+                LS.set(notesKey, next);
+                const c = FeatureConfig.get();
+                c.customNotes = Object.assign({}, c.customNotes || {}, { [m.id]: next });
+                FeatureConfig.save(c);
+              };
               body.innerHTML = `
                 <div class="fp-card" style="margin-bottom:14px">
                   <h4>${esc(m.ico||'✨')} ${esc(m.title)}</h4>
@@ -514,8 +522,8 @@
                   <div class="fp-row" style="margin:10px 0"><input class="fp-input" id="cmNote" placeholder="Tambahkan catatan / poin baru..." style="flex:1"><button class="fp-btn sm" id="cmAdd">+ Tambah</button></div>
                   <div class="fp-list">${notes.map((n,i)=>`<div class="fp-item"><span>${esc(n)}</span><button class="fp-btn sm danger" data-cd="${i}">Hapus</button></div>`).join('')||'<div class="fp-empty" style="padding:18px">Belum ada catatan.</div>'}</div>
                 </div>`;
-              body.querySelector('#cmAdd').onclick=()=>{const v=body.querySelector('#cmNote').value.trim();if(!v)return;notes.unshift(v);LS.set(notesKey,notes);FEATURES['custom:'+m.id].render(body);};
-              body.querySelectorAll('[data-cd]').forEach(btn=>btn.onclick=()=>{notes.splice(+btn.dataset.cd,1);LS.set(notesKey,notes);FEATURES['custom:'+m.id].render(body);});
+              body.querySelector('#cmAdd').onclick=()=>{const v=body.querySelector('#cmNote').value.trim();if(!v)return;notes.unshift(v);saveNotes(notes);FEATURES['custom:'+m.id].render(body);};
+              body.querySelectorAll('[data-cd]').forEach(btn=>btn.onclick=()=>{notes.splice(+btn.dataset.cd,1);saveNotes(notes);FEATURES['custom:'+m.id].render(body);});
             }
           };
         });
@@ -760,9 +768,13 @@
               ? await window.colabDb.accounts.mutate(postBody, pass||'')
               : await window.colabDb.accounts.list(pass||'');
             const remote = dedupeAccounts(j.accounts||[]);
-            localStorage.setItem('pb.accounts.seeded_v2', '1');
-            LS.set('pb.cached.accounts', remote);
-            return remote;
+            if(remote.length>0 || isPost) localStorage.setItem('pb.guru.remote_accounts_synced', '1');
+            if(remote.length>0 || localStorage.getItem('pb.guru.remote_accounts_synced')==='1'){
+              localStorage.setItem('pb.accounts.seeded_v2', '1');
+              LS.set('pb.cached.accounts', remote);
+              return remote;
+            }
+            return readCachedAccounts();
           }catch(colErr){
             if(colErr && colErr.status===401){
               localStorage.removeItem('pb.guru.passphrase');
@@ -893,7 +905,10 @@
         tableBox.querySelectorAll('.akDel').forEach(btn=>btn.onclick=()=>{
           const targetNis = btn.dataset.n;
           if(!confirm('Hapus akun '+targetNis+'?')) return;
-          run(()=>Accounts.send({action:'delete',nis:targetNis}), btn);
+          run(()=>Accounts.send({action:'delete',nis:targetNis}).then(r=>{
+            if(Array.isArray(r)&&r.length===0) try{localStorage.setItem('pb.accounts.user_cleared','1');}catch(_){}
+            return r;
+          }), btn);
         });
       };
 
@@ -1240,16 +1255,31 @@
     const ABS_KEY='pb.shared.absensi';
     let pulling=null;
     function cache(data){
-      ['tugas','lkpd','quiz'].forEach(k=>{ if(data[k]&&typeof data[k]==='object'){ if(k==='quiz')Object.values(data[k]).forEach(list=>(list||[]).forEach(e=>{if(e.total>0&&e.benar>=0&&e.benar<=e.total&&e.nilai==null)e.nilai=Math.round(e.benar/e.total*100);})); LS.set(LKEY[k],data[k]); } });
+      const actSynced = localStorage.getItem('pb.guru.remote_activity_synced') === '1';
+      let anyRemote = false;
+      ['tugas','lkpd','quiz'].forEach(k=>{
+        if(data[k]&&typeof data[k]==='object'){
+          const keys = Object.keys(data[k]);
+          if(keys.length>0) anyRemote = true;
+          if(keys.length===0 && !actSynced) return;
+          if(k==='quiz')Object.values(data[k]).forEach(list=>(list||[]).forEach(e=>{if(e.total>0&&e.benar>=0&&e.benar<=e.total&&e.nilai==null)e.nilai=Math.round(e.benar/e.total*100);}));
+          LS.set(LKEY[k],data[k]);
+        }
+      });
       if(data.absensi&&typeof data.absensi==='object'){
-        LS.set(ABS_KEY,data.absensi);
-        if(data.absensi['__CONFIG__|modules'] && typeof data.absensi['__CONFIG__|modules']==='object'){
-          const cfg = data.absensi['__CONFIG__|modules'];
-          LS.set('pb.modules.config', cfg);
-          if(Array.isArray(cfg.kelasList)) LS.set('pb.guru.kelas', cfg.kelasList);
-          if(Array.isArray(cfg.bankSoal)) LS.set('pb.guru.bank', cfg.bankSoal);
+        const absKeys = Object.keys(data.absensi);
+        if(absKeys.length>0) anyRemote = true;
+        if(absKeys.length>0 || actSynced){
+          LS.set(ABS_KEY,data.absensi);
+          if(data.absensi['__CONFIG__|modules'] && typeof data.absensi['__CONFIG__|modules']==='object'){
+            const cfg = data.absensi['__CONFIG__|modules'];
+            LS.set('pb.modules.config', cfg);
+            if(Array.isArray(cfg.kelasList)) LS.set('pb.guru.kelas', cfg.kelasList);
+            if(Array.isArray(cfg.bankSoal)) LS.set('pb.guru.bank', cfg.bankSoal);
+          }
         }
       }
+      if(anyRemote) localStorage.setItem('pb.guru.remote_activity_synced', '1');
       if(ROLE==='murid'){
         try{
           const myNis=localStorage.getItem('pb.murid.nis')||'';
@@ -1434,8 +1464,11 @@
         if(ROLE==='guru' && (localStorage.getItem('pb.guru.passphrase') || (window.colabDb.getToken && window.colabDb.getToken()))){
           const res = await window.colabDb.accounts.list(localStorage.getItem('pb.guru.passphrase')||'').catch(()=>null);
           if(res && Array.isArray(res.accounts)){
-            localStorage.setItem('pb.accounts.seeded_v2','1');
-            LS.set('pb.cached.accounts', dedupeAccounts(res.accounts));
+            if(res.accounts.length>0) localStorage.setItem('pb.guru.remote_accounts_synced','1');
+            if(res.accounts.length>0 || localStorage.getItem('pb.guru.remote_accounts_synced')==='1'){
+              localStorage.setItem('pb.accounts.seeded_v2','1');
+              LS.set('pb.cached.accounts', dedupeAccounts(res.accounts));
+            }
           }
         }
         const nextDigest = calcDigest();
@@ -2568,21 +2601,11 @@
         try{
           window.firebaseDb.setConfig(raw);
           const h = await window.firebaseDb.testConnection();
-          const remoteEmpty = !h.updatedAt && (h.counts?.materi||0)===0 && (h.counts?.tugas||0)===0 && (h.counts?.accounts||0)===0;
-          if(remoteEmpty && typeof window.runMigration === 'function'){
-            msgEl.textContent='✅ Firebase terhubung! Database masih kosong — otomatis menyalin data lokal ke Firebase...';
-            await window.runMigration({ force: true, silentIfNoAuth: true });
-          } else {
-            await SharedCatalog.pull(); await Activity.pull();
-            if(ROLE==='guru' && (localStorage.getItem('pb.guru.passphrase') || window.colabDb.getToken())){
-              try{
-                const ac = await window.colabDb.accounts.list(localStorage.getItem('pb.guru.passphrase')||'');
-                if(ac && Array.isArray(ac.accounts)){ localStorage.setItem('pb.accounts.seeded_v2','1'); LS.set('pb.cached.accounts', dedupeAccounts(ac.accounts)); }
-              }catch(_){}
-            }
-          }
+          msgEl.textContent='✅ Firebase terhubung — menyinkronkan semua data ke Cloud...';
+          await syncAllToCloud({ forceAll: false, silentIfNoAuth: true });
+          await Promise.all([SharedCatalog.pull(), Activity.pull()]);
           emitSync();
-          msgEl.textContent='✅ Terhubung ke Firebase Cloud ('+esc(h.projectId)+')! ('+(h.counts?.accounts||0)+' akun, '+(h.counts?.materi||0)+' materi, '+(h.counts?.tugas||0)+' tugas)';
+          msgEl.textContent='✅ Terhubung ke Firebase Cloud ('+esc(h.projectId)+') & semua data tersinkron!';
           setTimeout(()=>FEATURES.pengaturan.render(b), 700);
         }catch(err){
           msgEl.textContent='⚠️ Gagal menghubungkan Firebase: ' + (err && err.message ? err.message : err) + ' — pastikan Firestore Rules sudah mengizinkan baca/tulis.';
@@ -2642,14 +2665,13 @@
         };
       }
       b.querySelector('#cfgSync').onclick=async()=>{
-        if(typeof window.runMigration==='function'){
-          msgEl.textContent='⏳ Mengirim semua data lokal ke database Cloud...';
-          const res=await window.runMigration({force:true});
-          if(res&&res.ok){
-            msgEl.textContent='✅ Migrasi selesai! Semua data kini tersimpan di Cloud & siap dibuka di device lain.';
-            await SharedCatalog.pull(); await Activity.pull(); emitSync();
-          }else{ msgEl.textContent='⚠️ Migrasi gagal: '+((res&&res.error)||'Pastikan Cloud aktif & passphrase guru benar.'); }
-        }
+        msgEl.textContent='⏳ Menyinkronkan semua data ke database Cloud...';
+        const res=await syncAllToCloud({ forceAll: true, promptPass: true });
+        if(res&&res.ok){
+          msgEl.textContent='✅ Semua data berhasil disinkronkan ke Cloud & siap dibuka di device lain!';
+          await Promise.all([SharedCatalog.pull(), Activity.pull()]);
+          emitSync();
+        }else{ msgEl.textContent='⚠️ Sinkronisasi gagal: '+((res&&res.error)||'Pastikan Cloud aktif & passphrase guru benar.'); }
       };
     }
   };
@@ -3415,6 +3437,135 @@
   window.addEventListener('hashchange', ()=>{ const mc=getMyClass(); if(mc) guardDeepLink(mc); });
   window.addEventListener('popstate', ()=>{ const mc=getMyClass(); if(mc) guardDeepLink(mc); });
 
+  // Helper bersama: pastikan setiap koleksi Cloud terisi (tidak menimpa data Cloud yang sudah ada saat auto-sync)
+  async function syncAllToCloud(opts){
+    opts = opts || {};
+    if(!window.colabDb) return { ok: false, error: 'Client database belum dimuat.' };
+    if(window.colabDb.whenReady) await window.colabDb.whenReady();
+    if(!window.colabDb.isReady()) return { ok: false, error: 'Cloud belum terhubung.' };
+    let pass = localStorage.getItem('pb.guru.passphrase') || '';
+    const hasTok = !!(window.colabDb.getToken && window.colabDb.getToken());
+    if(!pass && !hasTok){
+      if(opts.promptPass){
+        pass = (prompt('Masukkan passphrase Guru untuk sinkronisasi ke Cloud:', '')||'').trim();
+        if(pass) localStorage.setItem('pb.guru.passphrase', pass);
+      }
+      if(!pass && !hasTok) return { ok: false, skipped: true, error: 'Passphrase guru diperlukan.' };
+    }
+
+    try{
+      const [remCat, remAct, remAccRes, remTopRes] = await Promise.all([
+        window.colabDb.catalog.pull().catch(()=>null),
+        window.colabDb.activity.pull().catch(()=>null),
+        window.colabDb.accounts.list(pass||'').catch(()=>null),
+        window.colabDb.topics.list().catch(()=>[])
+      ]);
+      const KINDS = ['materi','tugas','lkpd','quiz','pengumuman'];
+      const remoteHasCat = !!(remCat && KINDS.some(k=>Array.isArray(remCat[k])&&remCat[k].length>0));
+      const remAcc = (remAccRes && Array.isArray(remAccRes.accounts)) ? remAccRes.accounts : [];
+      const remTop = Array.isArray(remTopRes) ? remTopRes : (remTopRes && Array.isArray(remTopRes.topics) ? remTopRes.topics : []);
+
+      let needsUpload = false;
+      const payload = { preserveRemote: !opts.forceAll };
+
+      if(opts.forceAll || !remoteHasCat){
+        const localCat = {};
+        let hasLocalCat = false;
+        KINDS.forEach(k=>{
+          localCat[k] = LS.get(SK(k),[])||[];
+          if(localCat[k].length>0) hasLocalCat = true;
+        });
+        if(hasLocalCat){ payload.catalog = localCat; needsUpload = true; }
+      }
+
+      if(opts.forceAll || remAcc.length === 0){
+        let localAcc = readCachedAccounts();
+        if(localAcc.length === 0 && remAcc.length === 0 && localStorage.getItem('pb.accounts.user_cleared') !== '1'){
+          localAcc = DEFAULT_ACCOUNTS.map(a=>({...a}));
+          LS.set('pb.cached.accounts', localAcc);
+        }
+        if(localAcc.length > 0){
+          payload.accounts = localAcc;
+          needsUpload = true;
+        }
+      }
+
+      const defaultKelas = CLASS_CATALOG.map(c=>({n:c.n, s:30, m:c.mapel.join(' & '), avg:82}));
+      const defaultBank = [
+        {q:'Jelaskan pengertian algoritma.',t:'Esai',b:'X'},
+        {q:'Sebutkan 3 struktur kontrol dasar.',t:'Isian',b:'X'},
+        {q:'Perbedaan RAM dan ROM?',t:'Esai',b:'X'}
+      ];
+      const remMod = remAct && remAct.absensi && remAct.absensi['__CONFIG__|modules'];
+      if(opts.forceAll || !remMod){
+        const curCfg = FeatureConfig.get();
+        const modCfg = Object.assign({}, curCfg);
+        const savedKelas = LS.get('pb.guru.kelas', null);
+        const savedBank = LS.get('pb.guru.bank', null);
+        if(!Array.isArray(modCfg.kelasList) || !modCfg.kelasList.length){
+          modCfg.kelasList = (Array.isArray(savedKelas) && savedKelas.length) ? savedKelas : defaultKelas;
+          LS.set('pb.guru.kelas', modCfg.kelasList);
+        }
+        if(!Array.isArray(modCfg.bankSoal) || !modCfg.bankSoal.length){
+          modCfg.bankSoal = (Array.isArray(savedBank) && savedBank.length) ? savedBank : defaultBank;
+          LS.set('pb.guru.bank', modCfg.bankSoal);
+        }
+        if(!Array.isArray(modCfg.jadwal) || !modCfg.jadwal.length){
+          modCfg.jadwal = DEFAULT_SCHEDULE.map(x=>({...x}));
+        }
+        LS.set('pb.modules.config', modCfg);
+        payload.modulesConfig = modCfg;
+        payload.absensi = Object.assign({}, LS.get('pb.shared.absensi',{})||{});
+        payload.absensi['__CONFIG__|modules'] = modCfg;
+        needsUpload = true;
+      }
+
+      const localSubs = {};
+      ['tugas','lkpd','quiz'].forEach(j=>{
+        const loc = LS.get('pb.submissions.'+j, {})||{};
+        const remEmpty = !remAct || !remAct[j] || Object.keys(remAct[j]).length === 0;
+        if((opts.forceAll || remEmpty) && Object.keys(loc).length > 0){
+          localSubs[j] = loc;
+        }
+      });
+      if(Object.keys(localSubs).length > 0){ payload.submissions = localSubs; needsUpload = true; }
+
+      const localAbs = LS.get('pb.shared.absensi', {})||{};
+      const remAbsEmpty = !remAct || !remAct.absensi || Object.keys(remAct.absensi).length === 0;
+      if((opts.forceAll || remAbsEmpty) && Object.keys(localAbs).length > 0){
+        payload.absensi = Object.assign({}, localAbs, payload.absensi || {});
+        needsUpload = true;
+      }
+
+      const localTopics = LS.get('jenjangOverrides_v1', {})||{};
+      if((opts.forceAll || remTop.length === 0) && Object.keys(localTopics).length > 0){
+        payload.topics = localTopics;
+        needsUpload = true;
+      }
+
+      if(needsUpload){
+        const res = await window.colabDb.migrateAll(payload, pass||'');
+        if(res && res.ok){
+          localStorage.setItem('pb.migrated.cloud.v2', 'done');
+          localStorage.setItem('pb.guru.remote_catalog_synced', '1');
+          localStorage.setItem('pb.guru.remote_accounts_synced', '1');
+          localStorage.setItem('pb.guru.remote_activity_synced', '1');
+          if(typeof window.__fpSync === 'function') await window.__fpSync();
+        }
+        return { ok: !!(res && res.ok), uploaded: true, stats: res && res.stats };
+      }
+
+      if(remAcc.length > 0){
+        localStorage.setItem('pb.guru.remote_accounts_synced', '1');
+        localStorage.setItem('pb.accounts.seeded_v2', '1');
+        LS.set('pb.cached.accounts', dedupeAccounts(remAcc));
+      }
+      return { ok: true, uploaded: false };
+    }catch(e){
+      return { ok: false, error: (e && e.message) ? e.message : String(e) };
+    }
+  }
+
   // ── wire nav ──
   function init(){
     document.querySelectorAll('.nav-item').forEach((el,i)=>{
@@ -3462,27 +3613,15 @@
       else guardDeepLink(mc0);
       Promise.all([SharedCatalog.pull(), Activity.pull()]).then(()=>{ emitSync(); FeatureConfig.applySidebarConfig(); });
     } else {
-      // Pastikan guru selalu menarik katalog, aktivitas & daftar akun terbaru dari Cloud agar isi sama di semua device.
-      // Jika database Cloud benar-benar baru & masih kosong sementara perangkat ini punya data lokal, migrasi otomatis.
+      // Pastikan setiap koleksi Cloud yang masih kosong diisi dulu sebelum pull menimpa cache lokal, lalu sinkronkan dari Cloud.
       (async ()=>{
         try{
           if(window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
-          await Promise.all([SharedCatalog.pull(), Activity.pull()]);
-          if(window.colabDb && window.colabDb.isReady() && (localStorage.getItem('pb.guru.passphrase') || (window.colabDb.getToken && window.colabDb.getToken()))){
-            const pass = localStorage.getItem('pb.guru.passphrase')||'';
-            const ac = await window.colabDb.accounts.list(pass).catch(()=>null);
-            const remoteAccounts = (ac && Array.isArray(ac.accounts)) ? ac.accounts : [];
-            const hasRemoteCat = localStorage.getItem('pb.guru.remote_catalog_synced') === '1';
-            const localMat = LS.get('pb.guru.materi',[])||[];
-            const localTug = LS.get('pb.guru.tugas',[])||[];
-            if(!hasRemoteCat && remoteAccounts.length === 0 && (localMat.length > 0 || localTug.length > 0) && typeof window.runMigration === 'function'){
-              const mig = await window.runMigration({ force: true, silentIfNoAuth: true });
-              if(mig && mig.ok) Guard.notify('✅ Data lokal Anda otomatis disinkronkan ke database Cloud!');
-            } else if(ac && Array.isArray(ac.accounts)){
-              localStorage.setItem('pb.accounts.seeded_v2','1');
-              LS.set('pb.cached.accounts', dedupeAccounts(ac.accounts));
-            }
+          if(window.colabDb && window.colabDb.isReady()){
+            const res = await syncAllToCloud({ forceAll: false, silentIfNoAuth: true });
+            if(res && res.ok && res.uploaded) Guard.notify('✅ Seluruh data otomatis disinkronkan ke database Cloud!');
           }
+          await Promise.all([SharedCatalog.pull(), Activity.pull()]);
         }catch(_){}
         emitSync(); FeatureConfig.applySidebarConfig();
       })();

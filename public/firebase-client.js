@@ -643,8 +643,13 @@
   function applyActivitySnapshot(act) {
     try {
       const LKEY = { tugas: 'pb.submissions.tugas', lkpd: 'pb.submissions.lkpd', quiz: 'pb.submissions.quiz' };
+      const actSynced = localStorage.getItem('pb.guru.remote_activity_synced') === '1';
+      let anyRemote = false;
       ['tugas', 'lkpd', 'quiz'].forEach((k) => {
         if (act[k] && typeof act[k] === 'object') {
+          const keys = Object.keys(act[k]);
+          if (keys.length > 0) anyRemote = true;
+          if (keys.length === 0 && !actSynced) return;
           if (k === 'quiz') {
             Object.values(act[k]).forEach((arr) => {
               (arr || []).forEach((e) => {
@@ -658,14 +663,19 @@
         }
       });
       if (act.absensi && typeof act.absensi === 'object') {
-        localStorage.setItem('pb.shared.absensi', JSON.stringify(act.absensi));
-        if (act.absensi['__CONFIG__|modules'] && typeof act.absensi['__CONFIG__|modules'] === 'object') {
-          const cfg = act.absensi['__CONFIG__|modules'];
-          localStorage.setItem('pb.modules.config', JSON.stringify(cfg));
-          if (Array.isArray(cfg.kelasList)) localStorage.setItem('pb.guru.kelas', JSON.stringify(cfg.kelasList));
-          if (Array.isArray(cfg.bankSoal)) localStorage.setItem('pb.guru.bank', JSON.stringify(cfg.bankSoal));
+        const absKeys = Object.keys(act.absensi);
+        if (absKeys.length > 0) anyRemote = true;
+        if (absKeys.length > 0 || actSynced) {
+          localStorage.setItem('pb.shared.absensi', JSON.stringify(act.absensi));
+          if (act.absensi['__CONFIG__|modules'] && typeof act.absensi['__CONFIG__|modules'] === 'object') {
+            const cfg = act.absensi['__CONFIG__|modules'];
+            localStorage.setItem('pb.modules.config', JSON.stringify(cfg));
+            if (Array.isArray(cfg.kelasList)) localStorage.setItem('pb.guru.kelas', JSON.stringify(cfg.kelasList));
+            if (Array.isArray(cfg.bankSoal)) localStorage.setItem('pb.guru.bank', JSON.stringify(cfg.bankSoal));
+          }
         }
       }
+      if (anyRemote) localStorage.setItem('pb.guru.remote_activity_synced', '1');
     } catch (_) {}
   }
 
@@ -745,8 +755,9 @@
           if (!d.nis) return;
           list.push({ nis: String(d.nis), nama: String(d.nama || ''), kelas: String(d.kelas || ''), terakhirMasuk: d.terakhirMasuk ?? undefined });
         });
-        if (list.length > 0 || localStorage.getItem('pb.guru.remote_catalog_synced') === '1') {
+        if (list.length > 0 || localStorage.getItem('pb.guru.remote_accounts_synced') === '1') {
           try {
+            if (list.length > 0) localStorage.setItem('pb.guru.remote_accounts_synced', '1');
             localStorage.setItem('pb.accounts.seeded_v2', '1');
             localStorage.setItem('pb.cached.accounts', JSON.stringify(list));
           } catch (_) {}
@@ -993,6 +1004,7 @@
           const nis = String(body.nis || '').trim();
           if (!nis) throw new Error('NIS tidak valid.');
           await fs.deleteDoc(fs.doc(db, 'portal_accounts', safeDocId(nis)));
+          try { localStorage.setItem('pb.guru.remote_accounts_synced', '1'); } catch (_) {}
           return listAccounts(db, fs);
         }
 
@@ -1014,6 +1026,7 @@
             }
             await batch.commit();
           }
+          try { localStorage.setItem('pb.guru.remote_accounts_synced', '1'); } catch (_) {}
           return listAccounts(db, fs);
         }
 
@@ -1027,6 +1040,7 @@
         };
         if (body && body.password) rec.passwordHash = await hashPassword(String(body.password));
         await fs.setDoc(fs.doc(db, 'portal_accounts', safeDocId(nis)), rec, { merge: true });
+        try { localStorage.setItem('pb.guru.remote_accounts_synced', '1'); } catch (_) {}
         return listAccounts(db, fs);
       }
     },
@@ -1314,9 +1328,14 @@
       if (payload && payload.catalog && typeof payload.catalog === 'object') {
         const cur = await readCatalog(db, fs);
         const merged = { force: true };
+        const preserveRemote = Boolean(payload.preserveRemote);
         KINDS.forEach((k) => {
           const inc = payload.catalog[k];
-          merged[k] = Array.isArray(inc) && inc.length > 0 ? inc : cur[k];
+          if (preserveRemote && Array.isArray(cur[k]) && cur[k].length > 0) {
+            merged[k] = cur[k];
+          } else {
+            merged[k] = Array.isArray(inc) && inc.length > 0 ? inc : cur[k];
+          }
           stats.catalog += merged[k].length;
         });
         await writeCatalog(db, fs, merged);
