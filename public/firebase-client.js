@@ -79,6 +79,14 @@
     return btoa(unescape(encodeURIComponent(jsonStr))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
   }
 
+  function canonClass(v) {
+    const raw = String(v || '').trim().toUpperCase().replace(/\s+/g, '-').replace(/--+/g, '-');
+    if (!raw) return '';
+    if (raw === 'ALL' || raw === 'SEMUA-KELAS' || raw === 'SEMUA') return 'ALL';
+    const m = raw.match(/^(VIII|XII|XI|X)-?([A-D]|[1-9][0-9]*)$/);
+    return m ? (m[1] + '-' + m[2]) : raw;
+  }
+
   function pickConfigFields(cfg) {
     const out = {};
     ['apiKey', 'authDomain', 'databaseURL', 'projectId', 'storageBucket', 'messagingSenderId', 'appId', 'measurementId'].forEach((k) => {
@@ -1044,7 +1052,7 @@
           role: 'siswa',
           token: tok.token,
           expiresAt: tok.expiresAt,
-          account: { nis: d.nis, nama: d.nama, kelas: d.kelas, terakhirMasuk: tsMs }
+          account: { nis: d.nis, nama: d.nama, kelas: canonClass(d.kelas || 'X-1') || 'X-1', terakhirMasuk: tsMs }
         };
       },
 
@@ -1270,7 +1278,7 @@
               const rec = {
                 nis,
                 nama: String(row.nama || nis).slice(0, 80),
-                kelas: String(row.kelas || 'X-1').slice(0, 20),
+                kelas: (canonClass(row.kelas || 'X-1') || 'X-1').slice(0, 20),
                 updatedAt: ts
               };
               if (row.password) rec.passwordHash = await hashPassword(String(row.password));
@@ -1288,7 +1296,7 @@
         const rec = {
           nis,
           nama: String((body && body.nama) || nis).slice(0, 80),
-          kelas: String((body && body.kelas) || 'X-1').slice(0, 20),
+          kelas: (canonClass((body && body.kelas) || 'X-1') || 'X-1').slice(0, 20),
           updatedAt: ts
         };
         if (body && body.password) rec.passwordHash = await hashPassword(String(body.password));

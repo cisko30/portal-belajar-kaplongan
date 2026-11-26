@@ -202,7 +202,7 @@
   const canonOne = (value)=>{
     const raw=String(value||'').trim().toUpperCase().replace(/\s+/g,'-').replace(/--+/g,'-');
     if(raw==='ALL'||raw==='SEMUA-KELAS'||raw==='SEMUA') return 'ALL';
-    const roman=raw.match(/^(VIII|XII|XI|X)-?([A-D]|[1-4])$/);
+    const roman=raw.match(/^(VIII|XII|XI|X)-?([A-D]|[1-9][0-9]*)$/);
     return roman ? `${roman[1]}-${roman[2]}` : raw;
   };
   const canonicalClass = (value)=>{
@@ -524,11 +524,15 @@
     try { FeatureConfig.applySidebarConfig(); } catch(_){}
     try { window.dispatchEvent(new CustomEvent('pb:sync')); } catch(_){}
   }
+  const getAllowedClasses = ()=>{
+    const custom = (LS.get('pb.guru.kelas', [])||[]).map(c=>canonOne(c&&c.n||c)).filter(c=>c&&c!=='ALL');
+    return [...new Set([...ALL_CLASSES, ...custom])];
+  };
   const getMyClass = ()=>{
     const stored = LS.get('pb.murid.myClass', null);
     const v = stored ? canonicalClass(stored) : null;
     // Reject tampered/invalid class values → forces gate to reappear
-    if(v && !ALL_CLASSES.includes(v)){
+    if(v && !getAllowedClasses().includes(v)){
       try{ localStorage.removeItem('pb.murid.myClass'); }catch(_){}
       Guard.notify('Kelas tidak valid terdeteksi — silakan pilih ulang kelas.','err');
       return null;
@@ -536,11 +540,20 @@
     return v;
   };
   const setMyClass = (v)=>{
-    if(!ALL_CLASSES.includes(v)){
+    if(v === null || v === undefined || v === ''){
+      try{ localStorage.removeItem('pb.murid.myClass'); }catch(_){}
+      emitSync();
+      return true;
+    }
+    const clean = canonicalClass(v);
+    if(!clean || !getAllowedClasses().includes(clean)){
       Guard.notify('Kelas "'+v+'" tidak diizinkan.','err');
       return false;
     }
-    LS.set('pb.murid.myClass', canonicalClass(v)); return true;
+    LS.set('pb.murid.myClass', clean);
+    document.querySelectorAll('.mc-badge').forEach(el=>{ el.textContent='Kelas '+clean; });
+    emitSync();
+    return true;
   };
 
   // ── AccessGuard: server-style validation on every data request ──
@@ -646,7 +659,7 @@
         b.innerHTML=`
         <div class="fp-row" style="margin-bottom:12px;justify-content:space-between;flex-wrap:wrap;gap:8px">
           <div class="fp-row" style="flex-wrap:wrap;gap:6px">
-            <input class="fp-input" id="kn" placeholder="Nama kelas (mis. XII-A)" style="width:180px"/>
+            <input class="fp-input" id="kn" placeholder="Nama kelas (mis. X-1 atau XII-2)" style="width:190px"/>
             <input class="fp-input" id="km" placeholder="Mapel" style="width:140px"/>
             <input class="fp-input" id="ks" type="number" min="1" placeholder="Jml siswa" style="width:110px"/>
             <button class="fp-btn sm" id="kAdd">+ Tambah Kelas</button>
@@ -666,11 +679,12 @@
         const load12Btn=b.querySelector('#kLoad12');
         if(load12Btn) load12Btn.onclick=()=>{list=CLASS_CATALOG.map(c=>({n:c.n,s:0,m:c.mapel.join(' & '),avg:0}));save();draw();};
         b.querySelector('#kAdd').onclick=()=>{
-          const n=b.querySelector('#kn').value.trim();
+          const rawN=b.querySelector('#kn').value.trim();
+          const n=canonicalClass(rawN)||rawN.toUpperCase();
           const m=b.querySelector('#km').value.trim()||'Informatika';
           const s=+b.querySelector('#ks').value||30;
           if(!n)return alert('Nama kelas wajib diisi');
-          if(list.some(x=>x.n.toLowerCase()===n.toLowerCase()))return alert('Kelas sudah ada');
+          if(list.some(x=>canonicalClass(x.n).toLowerCase()===n.toLowerCase()))return alert('Kelas sudah ada');
           list.push({n,m,s,avg:0});save();draw();
         };
         b.querySelectorAll('[data-d]').forEach(x=>x.onclick=()=>{if(confirm('Hapus kelas ini?')){list.splice(+x.dataset.d,1);save();draw();}});
@@ -927,7 +941,7 @@
         const rowsIn = raw.map(l=>{
           const [nis,nama,kelas,password]=l.split(/[,;\t]/).map(s=>(s||'').trim());
           const kls = canonicalClass(kelas);
-          if(!nis || !/^[A-Za-z0-9._-]{3,30}$/.test(nis) || !ALL_CLASSES.includes(kls)){ skipped.push(l); return null; }
+          if(!nis || !/^[A-Za-z0-9._-]{3,30}$/.test(nis) || !getAllowedClasses().includes(kls)){ skipped.push(l); return null; }
           return {nis,nama:nama||nis,kelas:kls,password:password||Math.random().toString(36).slice(2,8)};
         }).filter(Boolean);
         if(!rowsIn.length) return alert('Tidak ada baris valid.\nFormat: NIS,Nama,Kelas,Password\nKelas harus salah satu dari: '+ALL_CLASSES.join(', '));
@@ -3982,7 +3996,7 @@
     return null;
   }
   function showAccessDeniedToast(requested, myClass){
-    const known = ALL_CLASSES.includes(requested);
+    const known = getAllowedClasses().includes(requested);
     const wrap = document.createElement('div');
     wrap.setAttribute('role','alert');
     wrap.setAttribute('aria-live','assertive');
@@ -4193,7 +4207,7 @@
     // Gate: murid wajib pilih kelas dulu (dan kelas harus valid dari katalog)
     if(ROLE==='murid'){
       const mc0 = getMyClass();
-      if(!mc0 || !ALL_CLASSES.includes(mc0)){ setMyClass(null); showClassGate(); }
+      if(!mc0 || !getAllowedClasses().includes(mc0)){ setMyClass(null); showClassGate(); }
       else guardDeepLink(mc0);
       Promise.all([SharedCatalog.pull(), Activity.pull()]).then(()=>{ emitSync(); FeatureConfig.applySidebarConfig(); });
     } else {

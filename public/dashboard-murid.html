@@ -433,7 +433,7 @@ body{
       </div>
       <div class="tb-right">
         <div class="tb-chip" id="mColabChip" style="font-size:11.5px">🟡 Lokal</div>
-        <div class="tb-chip">Kelas X-A</div>
+        <div class="tb-chip" id="mClassChip">Kelas –</div>
         <div class="tb-btn" id="mBtnTheme" title="Ubah Mode Gelap / Terang">🌙</div>
         <div class="tb-btn" id="mBtnSkill" title="Skill &amp; Kompetensi" onclick="window.__fpOpen&&window.__fpOpen('skill')">⚡</div>
         <div class="tb-btn" id="mBtnSearch" title="Cari Materi"><i data-lucide="search" width="16" height="16"></i></div>
@@ -446,7 +446,7 @@ body{
       <section class="hero">
         <div class="hero-inner">
           <div>
-            <h1>Hai Ahmad, lanjutkan belajarmu. Hari ini ada tugas dan quiz yang jangan kamu lewatkan.</h1>
+            <h1>Hai Siswa, lanjutkan belajarmu. Hari ini ada tugas dan quiz yang jangan kamu lewatkan.</h1>
             <p>Semua yang perlu kamu cek sudah dikumpulkan di sini: jadwal hari ini, tugas yang belum selesai, progres nilai, leaderboard, dan pengumuman terbaru.</p>
             <div class="hero-meta">
               <div class="hm"><span class="hm-v">–</span><span class="hm-l">Rata-rata nilai</span></div>
@@ -819,26 +819,46 @@ render();
       'XI-2':['KKA'],'XI-4':['KKA'],
       'XII-2':['Informatika'],'XII-4':['Informatika']
     };
+    function canon(k){
+      var raw=String(k||'').trim().toUpperCase().replace(/\s+/g,'-').replace(/--+/g,'-');
+      if(!raw) return '';
+      if(raw==='ALL'||raw==='SEMUA-KELAS'||raw==='SEMUA') return 'ALL';
+      var m=raw.match(/^(VIII|XII|XI|X)-?([A-D]|[1-9][0-9]*)$/);
+      return m ? (m[1]+'-'+m[2]) : raw;
+    }
+    function resolveMapel(k){
+      if(!k) return [];
+      if(MAPEL[k]) return MAPEL[k];
+      if(k.indexOf('VIII')===0) return ['KKA'];
+      if(k.indexOf('XII')===0) return ['Informatika'];
+      if(k.indexOf('XI')===0) return ['KKA'];
+      if(k.indexOf('X-')===0) return ['Informatika','KKA'];
+      return [];
+    }
     function readClass(){
       try{
         var raw = localStorage.getItem('pb.murid.myClass') || '';
         if(raw.charAt(0) === '"') raw = JSON.parse(raw);
-        return String(raw||'').toUpperCase();
+        return canon(raw);
       }catch(e){ return ''; }
     }
-    var nama = (localStorage.getItem('pb.murid.nama')||'').trim();
-    var kelas = readClass();
-    var mapel = (MAPEL[kelas]||[]).join(' & ');
-    var first = nama ? nama.split(/\s+/)[0] : '';
-    var initials = nama ? nama.split(/\s+/).slice(0,2).map(function(w){return w.charAt(0);}).join('').toUpperCase() : '–';
-
-    function setText(sel, val){ var el=document.querySelector(sel); if(el && val) el.textContent = val; }
-    setText('.student-name', nama || 'Siswa');
-    setText('.student-ava', initials);
-    setText('.student-meta', (kelas ? 'Kelas '+kelas : 'Kelas -') + (mapel ? ' · '+mapel : ''));
-    setText('.tb-chip', kelas ? 'Kelas '+kelas : 'Kelas -');
-    var h = document.querySelector('.hero h1');
-    if(h) h.textContent = 'Hai '+(first||'Siswa')+', lanjutkan belajarmu. Hari ini ada tugas dan quiz yang jangan kamu lewatkan.';
+    function setText(sel, val){ var el=document.querySelector(sel); if(el && val!=null) el.textContent = val; }
+    var nama = '';
+    var kelas = '';
+    function paintStudentIdentity(){
+      nama = (localStorage.getItem('pb.murid.nama')||'').trim();
+      kelas = readClass();
+      var mapel = resolveMapel(kelas).join(' & ');
+      var first = nama ? nama.split(/\s+/)[0] : '';
+      var initials = nama ? nama.split(/\s+/).slice(0,2).map(function(w){return w.charAt(0);}).join('').toUpperCase() : '–';
+      setText('.student-name', nama || 'Siswa');
+      setText('.student-ava', initials);
+      setText('.student-meta', (kelas ? 'Kelas '+kelas : 'Kelas –') + (mapel ? ' · '+mapel : ''));
+      setText('#mClassChip', kelas ? 'Kelas '+kelas : 'Kelas –');
+      var h = document.querySelector('.hero h1');
+      if(h) h.textContent = 'Hai '+(first||'Siswa')+', lanjutkan belajarmu. Hari ini ada tugas dan quiz yang jangan kamu lewatkan.';
+    }
+    paintStudentIdentity();
 
     // Tanggal hari ini (bukan tanggal contoh).
     var now = new Date();
@@ -850,9 +870,9 @@ render();
     if(boxSub) boxSub.textContent = tgl;
 
     function lsGet(k,d){try{var v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch(e){return d;}}
-    function canon(k){return String(k||'').trim().toUpperCase().replace(/\s+/g,'-');}
     function matchK(k){return String(k||'').split(',').some(function(p){var c=canon(p);return !c||c==='ALL'||c==='SEMUA-KELAS'||c===kelas;});}
     function syncStudentUI(){
+      paintStudentIdentity();
       var nis=localStorage.getItem('pb.murid.nis')||'';
       var tugas=lsGet('pb.guru.tugas',[]).filter(function(t){return t&&matchK(t.k||t.kelas)&&(t.s!=='Draft');});
       var lkpd=lsGet('pb.guru.lkpd',[]).filter(function(t){return t&&matchK(t.k||t.kelas);});

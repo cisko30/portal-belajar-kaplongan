@@ -2311,6 +2311,12 @@
       }
       return fallbackUrl;
     }
+    function canonStudentClass(val) {
+      const raw = String(val || '').trim().toUpperCase().replace(/\s+/g, '-').replace(/--+/g, '-');
+      if (!raw || raw === 'ALL' || raw === 'SEMUA-KELAS') return 'X-1';
+      const m = raw.match(/^(VIII|XII|XI|X)-?([A-D]|[1-9][0-9]*)$/);
+      return m ? (m[1] + '-' + m[2]) : raw;
+    }
     function closeLoginOutside(e) { if (e.target === document.getElementById('loginOverlay')) closeLogin() }
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLogin() })
     function pickRole(el) {
@@ -2754,7 +2760,7 @@
           sessionStorage.removeItem('pb.admin.ok');
           localStorage.setItem('pb.murid.nis', a.nis || nis);
           localStorage.setItem('pb.murid.nama', a.nama || 'Siswa');
-          localStorage.setItem('pb.murid.myClass', JSON.stringify(String(a.kelas || 'X-1').toUpperCase()));
+          localStorage.setItem('pb.murid.myClass', JSON.stringify(canonStudentClass(a.kelas || 'X-1')));
           location.href = afterLoginUrl('siswa', '/dashboard-murid.html');
         } catch (err) { loginMsg(err.message || ('Gagal masuk lewat ' + engineName + '.'), 'err'); }
         return;
@@ -2857,7 +2863,7 @@
         sessionStorage.removeItem('pb.admin.ok');
         localStorage.setItem('pb.murid.nis', a.nis || nis);
         localStorage.setItem('pb.murid.nama', a.nama || '');
-        localStorage.setItem('pb.murid.myClass', JSON.stringify(String(a.kelas || '').toUpperCase()));
+        localStorage.setItem('pb.murid.myClass', JSON.stringify(canonStudentClass(a.kelas || 'X-1')));
         location.href = afterLoginUrl('siswa', '/dashboard-murid.html');
       } catch (err) {
         loginMsg('Gagal menghubungi server: ' + err.message, 'err');
