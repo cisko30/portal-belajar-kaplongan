@@ -377,27 +377,9 @@
     { nis: '1010', nama: 'Putri Ayu', kelas: 'XII-4', terakhirMasuk: Date.now() - 7200000 }
   ];
 
-  // Auto-seed: jika penyimpanan lokal masih kosong, isi dengan master katalog bawaan
-  (function seedInitialCatalog(){
+  // Inisialisasi bersih: tidak mengisi data contoh otomatis agar kondisi kosong tetap kosong lintas perangkat.
+  (function cleanupAccountDuplicates(){
     try {
-      const initKey = 'pb.catalog.auto_seeded_v2';
-      if(!localStorage.getItem(initKey)){
-        ['materi','tugas','lkpd','quiz','pengumuman'].forEach(k=>{
-          const stored = LS.get(SK(k), null);
-          if(!stored || (Array.isArray(stored) && stored.length===0)){
-            LS.set(SK(k), DEFAULT_CATALOG[k]||[]);
-          }
-        });
-        localStorage.setItem(initKey, '1');
-      }
-      if(!localStorage.getItem('pb.accounts.seeded_v2')){
-        const cachedAcc = LS.get('pb.cached.accounts', null);
-        if(!cachedAcc || (Array.isArray(cachedAcc) && cachedAcc.length===0)){
-          LS.set('pb.cached.accounts', DEFAULT_ACCOUNTS);
-        }
-        localStorage.setItem('pb.accounts.seeded_v2', '1');
-      }
-      // Bersihkan duplikat NIS yang mungkin sempat tersimpan sebelumnya
       const existingAcc = LS.get('pb.cached.accounts', null);
       if(Array.isArray(existingAcc)){
         const seen = new Set();
@@ -647,7 +629,7 @@
       const cfgInit = FeatureConfig.get();
       let list=Array.isArray(cfgInit.kelasList) && cfgInit.kelasList.length
         ? cfgInit.kelasList
-        : LS.get(key, CLASS_CATALOG.map(c=>({n:c.n, s:30, m:c.mapel.join(' & '), avg: 80+Math.floor(Math.random()*8)})));
+        : LS.get(key, []);
 
       const save=()=>{
         LS.set(key,list);
@@ -661,18 +643,21 @@
             <input class="fp-input" id="km" placeholder="Mapel" style="width:140px"/>
             <input class="fp-input" id="ks" type="number" min="1" placeholder="Jml siswa" style="width:110px"/>
             <button class="fp-btn sm" id="kAdd">+ Tambah Kelas</button>
+            ${list.length===0?'<button class="fp-btn sm ghost" id="kLoad12">📋 Muat 12 Kelas SMA NU</button>':''}
           </div>
           <span class="fp-badge info">${list.length} kelas</span>
         </div>
         <div class="fp-grid c3">${list.map((k,i)=>`
-          <div class="fp-card"><h4>Kelas ${esc(k.n)}</h4><p>${esc(k.m)} · ${k.s} siswa</p>
+          <div class="fp-card"><h4>Kelas ${esc(k.n)}</h4><p>${esc(k.m)} · ${k.s||0} siswa</p>
           <div class="fp-row" style="margin-top:10px;justify-content:space-between">
             <span class="fp-badge info">Rata-rata ${k.avg||'–'}</span>
             <div class="fp-row" style="gap:4px">
               <button class="fp-btn sm ghost" data-e="${i}">Edit</button>
               <button class="fp-btn sm danger" data-d="${i}">Hapus</button>
             </div>
-          </div></div>`).join('')}</div>`;
+          </div></div>`).join('')||'<div class="fp-empty" style="grid-column:1/-1">Belum ada kelas terdaftar. Tambahkan kelas di atas atau klik "Muat 12 Kelas SMA NU".</div>'}</div>`;
+        const load12Btn=b.querySelector('#kLoad12');
+        if(load12Btn) load12Btn.onclick=()=>{list=CLASS_CATALOG.map(c=>({n:c.n,s:0,m:c.mapel.join(' & '),avg:0}));save();draw();};
         b.querySelector('#kAdd').onclick=()=>{
           const n=b.querySelector('#kn').value.trim();
           const m=b.querySelector('#km').value.trim()||'Informatika';
@@ -714,8 +699,7 @@
       if (clean.length !== raw.length) LS.set('pb.cached.accounts', clean);
       return clean;
     }
-    if (localStorage.getItem('pb.accounts.seeded_v2')) return [];
-    return [...DEFAULT_ACCOUNTS];
+    return [];
   };
   const mutateLocalAccounts = (body) => {
     localStorage.setItem('pb.accounts.seeded_v2', '1');
@@ -2062,7 +2046,6 @@
       const key='pb.guru.quiz'; let list=LS.get(key,[]);
       if(!Array.isArray(list)) list=[];
       const save=()=>{LS.set(key,list);SharedCatalog.publish();};
-      if(seedQuizzes(list)) save();
       const scoreKey='pb.murid.quizScores'; const scores=()=>LS.get(scoreKey,{}); const saveScore=(v)=>LS.set(scoreKey,v);
       const myClass=getMyClass();
       // Kunci stabil per quiz (judul), supaya hasil tidak tertukar saat urutan berubah.
@@ -2243,11 +2226,7 @@
     render(b){
       const key=K('bank');
       const cfgBank = FeatureConfig.get().bankSoal;
-      let list=Array.isArray(cfgBank) && cfgBank.length ? cfgBank : LS.get(key,[
-        {q:'Jelaskan pengertian algoritma.',t:'Esai',b:'X'},
-        {q:'Sebutkan 3 struktur kontrol dasar.',t:'Isian',b:'X'},
-        {q:'Perbedaan RAM dan ROM?',t:'Esai',b:'X'}
-      ]);
+      let list=Array.isArray(cfgBank) && cfgBank.length ? cfgBank : LS.get(key,[]);
       const save=()=>{
         LS.set(key,list);
         const cfg=FeatureConfig.get(); cfg.bankSoal=list; FeatureConfig.save(cfg);
@@ -2499,7 +2478,7 @@
       if(ROLE==='murid') return FEATURES.jadwal_murid.render(b);
       const getRows = ()=>{
         const cfg = FeatureConfig.get();
-        return Array.isArray(cfg.jadwal) ? cfg.jadwal.slice() : DEFAULT_SCHEDULE.map(x=>({...x}));
+        return Array.isArray(cfg.jadwal) ? cfg.jadwal.slice() : [];
       };
       const saveRows = rows => {
         const cfg = FeatureConfig.get();
@@ -2955,7 +2934,7 @@
           const myCls=ROLE==='murid'?getMyClass():'ALL';
           const mats=(LS.get('pb.guru.materi',[])||[]).filter(m=>ROLE!=='murid'||matchesClass(m.k,myCls));
           const tugs=(LS.get('pb.guru.tugas',[])||[]).filter(t=>ROLE!=='murid'||matchesClass(t.k,myCls));
-          const jd=(Array.isArray(cfg.jadwal)?cfg.jadwal:DEFAULT_SCHEDULE).filter(r=>ROLE!=='murid'||matchesClass(r.kelas,myCls));
+          const jd=(Array.isArray(cfg.jadwal)?cfg.jadwal:[]).filter(r=>ROLE!=='murid'||matchesClass(r.kelas,myCls));
           if(l.includes('jadwal')) return jd.length ? 'Jadwal aktif:\n• '+jd.map(r=>`${r.hari} ${r.jam} — ${r.mapel} (${r.kelas}, ${r.ruang||'-'})`).join('\n• ') : 'Belum ada jadwal tercatat.';
           if(l.includes('materi')&&!l.includes('ringkas')) return mats.length ? 'Materi tersedia ('+mats.length+'):\n• '+mats.slice(0,6).map(m=>`${m.j} (${m.mapel||'Umum'} · ${m.k})`).join('\n• ') : 'Belum ada materi yang diterbitkan.';
           if(l.includes('tugas')||l.includes('deadline')) return tugs.length ? 'Daftar tugas aktif ('+tugs.length+'):\n• '+tugs.slice(0,5).map(t=>`${t.j} — Deadline ${t.d||'TBD'}`).join('\n• ') : 'Belum ada tugas aktif.';
@@ -2983,8 +2962,8 @@
     ico:'!', title:'Pengumuman', sub:'Info terbaru dari sekolah & guru',
     render(b){
       const key = SK('pengumuman');
-      let items = LS.get(key, DEFAULT_CATALOG.pengumuman);
-      if(!Array.isArray(items) || !items.length) items = DEFAULT_CATALOG.pengumuman;
+      let items = LS.get(key, []);
+      if(!Array.isArray(items)) items = [];
       const save = ()=>{ LS.set(key, items); SharedCatalog.publish({silent:true}); };
       const draw = ()=>{
         const formHtml = ROLE==='guru' ? `
@@ -3038,7 +3017,7 @@
     render(b){
       const myClass = getMyClass();
       const cfg = FeatureConfig.get();
-      const all = Array.isArray(cfg.jadwal) ? cfg.jadwal : DEFAULT_SCHEDULE;
+      const all = Array.isArray(cfg.jadwal) ? cfg.jadwal : [];
       const rows = all.filter(r => !r.kelas || matchesClass(r.kelas, myClass));
       if(!rows.length){
         b.innerHTML=`<div class="fp-empty">Belum ada jadwal untuk kelas ${esc(myClass||'-')}.</div>`;
@@ -3479,45 +3458,39 @@
       }
 
       if(opts.forceAll || remAcc.length === 0){
-        let localAcc = readCachedAccounts();
-        if(localAcc.length === 0 && remAcc.length === 0 && localStorage.getItem('pb.accounts.user_cleared') !== '1'){
-          localAcc = DEFAULT_ACCOUNTS.map(a=>({...a}));
-          LS.set('pb.cached.accounts', localAcc);
-        }
+        const localAcc = readCachedAccounts();
         if(localAcc.length > 0){
           payload.accounts = localAcc;
           needsUpload = true;
         }
       }
 
-      const defaultKelas = CLASS_CATALOG.map(c=>({n:c.n, s:30, m:c.mapel.join(' & '), avg:82}));
-      const defaultBank = [
-        {q:'Jelaskan pengertian algoritma.',t:'Esai',b:'X'},
-        {q:'Sebutkan 3 struktur kontrol dasar.',t:'Isian',b:'X'},
-        {q:'Perbedaan RAM dan ROM?',t:'Esai',b:'X'}
-      ];
       const remMod = remAct && remAct.absensi && remAct.absensi['__CONFIG__|modules'];
       if(opts.forceAll || !remMod){
         const curCfg = FeatureConfig.get();
         const modCfg = Object.assign({}, curCfg);
         const savedKelas = LS.get('pb.guru.kelas', null);
         const savedBank = LS.get('pb.guru.bank', null);
-        if(!Array.isArray(modCfg.kelasList) || !modCfg.kelasList.length){
-          modCfg.kelasList = (Array.isArray(savedKelas) && savedKelas.length) ? savedKelas : defaultKelas;
-          LS.set('pb.guru.kelas', modCfg.kelasList);
+        if(Array.isArray(savedKelas) && savedKelas.length && (!Array.isArray(modCfg.kelasList) || !modCfg.kelasList.length)){
+          modCfg.kelasList = savedKelas;
         }
-        if(!Array.isArray(modCfg.bankSoal) || !modCfg.bankSoal.length){
-          modCfg.bankSoal = (Array.isArray(savedBank) && savedBank.length) ? savedBank : defaultBank;
-          LS.set('pb.guru.bank', modCfg.bankSoal);
+        if(Array.isArray(savedBank) && savedBank.length && (!Array.isArray(modCfg.bankSoal) || !modCfg.bankSoal.length)){
+          modCfg.bankSoal = savedBank;
         }
-        if(!Array.isArray(modCfg.jadwal) || !modCfg.jadwal.length){
-          modCfg.jadwal = DEFAULT_SCHEDULE.map(x=>({...x}));
+        const hasAnyCfg = (modCfg.disabled && modCfg.disabled.length)
+          || (modCfg.customModules && modCfg.customModules.length)
+          || (Array.isArray(modCfg.kelasList) && modCfg.kelasList.length)
+          || (Array.isArray(modCfg.bankSoal) && modCfg.bankSoal.length)
+          || (Array.isArray(modCfg.jadwal) && modCfg.jadwal.length)
+          || (Array.isArray(modCfg.customSkills) && modCfg.customSkills.length)
+          || (Array.isArray(modCfg.aiPrompts) && modCfg.aiPrompts.length);
+        if(hasAnyCfg || opts.forceAll){
+          LS.set('pb.modules.config', modCfg);
+          payload.modulesConfig = modCfg;
+          payload.absensi = Object.assign({}, LS.get('pb.shared.absensi',{})||{});
+          payload.absensi['__CONFIG__|modules'] = modCfg;
+          needsUpload = true;
         }
-        LS.set('pb.modules.config', modCfg);
-        payload.modulesConfig = modCfg;
-        payload.absensi = Object.assign({}, LS.get('pb.shared.absensi',{})||{});
-        payload.absensi['__CONFIG__|modules'] = modCfg;
-        needsUpload = true;
       }
 
       const localSubs = {};

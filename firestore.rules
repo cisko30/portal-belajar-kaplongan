@@ -4,7 +4,8 @@ service cloud.firestore {
     // Katalog materi, tugas, LKPD, quiz, pengumuman (dibaca seluruh warga sekolah)
     match /portal_catalog/{docId} {
       allow read: if true;
-      allow write: if request.resource.data.keys().size() <= 10;
+      allow create, update: if request.resource.data.keys().size() <= 10;
+      allow delete: if true;
     }
 
     // Akun siswa (password disimpan sebagai hash PBKDF2-SHA256 + salt)

@@ -637,6 +637,20 @@
           if (Array.isArray(cat[k])) localStorage.setItem('pb.guru.' + k, JSON.stringify(cat[k]));
         });
       }
+      if (cat && cat.reset) {
+        localStorage.setItem('pb.guru.remote_accounts_synced', '1');
+        localStorage.setItem('pb.guru.remote_activity_synced', '1');
+        localStorage.setItem('pb.accounts.user_cleared', '1');
+        localStorage.setItem('pb.cached.accounts', '[]');
+        localStorage.setItem('pb.submissions.tugas', '{}');
+        localStorage.setItem('pb.submissions.lkpd', '{}');
+        localStorage.setItem('pb.submissions.quiz', '{}');
+        localStorage.setItem('pb.shared.absensi', '{}');
+        localStorage.setItem('pb.modules.config', '{}');
+        localStorage.setItem('pb.guru.kelas', '[]');
+        localStorage.setItem('pb.guru.bank', '[]');
+        localStorage.removeItem('jenjangOverrides_v1');
+      }
     } catch (_) {}
   }
 
@@ -694,11 +708,14 @@
     let firstCat = true, firstSub = true, firstAtt = true, firstTop = true, firstAcc = true;
 
     liveUnsubs.push(fs.onSnapshot(fs.collection(db, 'portal_catalog'), (snap) => {
-      const cat = { materi: [], tugas: [], lkpd: [], quiz: [], pengumuman: [], updatedAt: undefined };
+      const cat = { materi: [], tugas: [], lkpd: [], quiz: [], pengumuman: [], updatedAt: undefined, reset: false };
       snap.forEach((docSnap) => {
         const id = docSnap.id;
         const d = docSnap.data() || {};
-        if (id === 'meta' && typeof d.updatedAt === 'string') cat.updatedAt = d.updatedAt;
+        if (id === 'meta') {
+          if (typeof d.updatedAt === 'string') cat.updatedAt = d.updatedAt;
+          if (d.reset) cat.reset = true;
+        }
         else if (KINDS.includes(id)) {
           cat[id] = Array.isArray(d.items) ? d.items : [];
           if (typeof d.updatedAt === 'string' && !cat.updatedAt) cat.updatedAt = d.updatedAt;
@@ -1401,7 +1418,7 @@
     async resetAll(passphrase) {
       await requireStaff(passphrase);
       const { db, fs } = await ensureFirestore();
-      const cols = ['portal_catalog', 'portal_accounts', 'portal_submissions', 'portal_attendance', 'portal_topics', 'portal_live_rooms'];
+      const cols = ['portal_accounts', 'portal_submissions', 'portal_attendance', 'portal_topics', 'portal_live_rooms'];
       for (const colName of cols) {
         const snap = await fs.getDocs(fs.collection(db, colName));
         const docs = snap.docs || [];
@@ -1419,7 +1436,13 @@
         batch.delete(fDoc.ref);
         await batch.commit();
       }
-      return { ok: true };
+      // Timpa portal_catalog dengan array kosong & meta { reset: true } (patuh rules & bersihkan semua device real-time)
+      const ts = new Date().toISOString();
+      const catBatch = fs.writeBatch(db);
+      KINDS.forEach((k) => catBatch.set(fs.doc(db, 'portal_catalog', k), { items: [], updatedAt: ts }));
+      catBatch.set(fs.doc(db, 'portal_catalog', 'meta'), { updatedAt: ts, reset: true });
+      await catBatch.commit();
+      return { ok: true, updatedAt: ts };
     }
   };
 

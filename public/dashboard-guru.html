@@ -542,7 +542,7 @@ tbody tr:hover td{background:oklch(97% 0.01 265);color:var(--tx)}
     <div class="nav-item" data-feature="tugas">
       <i data-lucide="file-text" width="16" height="16"></i>
       <span>Tugas</span>
-      <span class="badge">5</span>
+      <span class="badge" style="display:none">0</span>
     </div>
     <div class="nav-item" data-feature="lkpd">
       <i data-lucide="clipboard-list" width="16" height="16"></i>
@@ -666,8 +666,8 @@ tbody tr:hover td{background:oklch(97% 0.01 265);color:var(--tx)}
       <div class="stat">
         <div class="stat-info">
           <div class="stat-lbl">Total Kelas</div>
-          <div class="stat-v">3</div>
-          <div class="stat-sub">Aktif semester ini</div>
+          <div class="stat-v">0</div>
+          <div class="stat-sub">Belum ada kelas</div>
         </div>
         <div class="stat-ico" style="background:var(--pl)">
           <i data-lucide="users" width="20" height="20" color="oklch(50% 0.24 265)"></i>
@@ -676,8 +676,8 @@ tbody tr:hover td{background:oklch(97% 0.01 265);color:var(--tx)}
       <div class="stat">
         <div class="stat-info">
           <div class="stat-lbl">Total Siswa</div>
-          <div class="stat-v">84</div>
-          <div class="stat-sub"><em class="up">+2</em> dari semester lalu</div>
+          <div class="stat-v">0</div>
+          <div class="stat-sub">Akun siswa terdaftar</div>
         </div>
         <div class="stat-ico" style="background:var(--okl)">
           <i data-lucide="graduation-cap" width="20" height="20" color="oklch(57% 0.18 148)"></i>
@@ -686,8 +686,8 @@ tbody tr:hover td{background:oklch(97% 0.01 265);color:var(--tx)}
       <div class="stat">
         <div class="stat-info">
           <div class="stat-lbl">Tugas Menunggu</div>
-          <div class="stat-v">17</div>
-          <div class="stat-sub">Perlu dinilai segera</div>
+          <div class="stat-v">0</div>
+          <div class="stat-sub">0 tugas/LKPD aktif</div>
         </div>
         <div class="stat-ico" style="background:var(--warnl)">
           <i data-lucide="file-check" width="20" height="20" color="oklch(65% 0.2 60)"></i>
@@ -696,8 +696,8 @@ tbody tr:hover td{background:oklch(97% 0.01 265);color:var(--tx)}
       <div class="stat">
         <div class="stat-info">
           <div class="stat-lbl">Rata-rata Nilai</div>
-          <div class="stat-v">82.4</div>
-          <div class="stat-sub"><em class="up">+3.1</em> dari pretest awal</div>
+          <div class="stat-v">–</div>
+          <div class="stat-sub">Belum ada nilai</div>
         </div>
         <div class="stat-ico" style="background:var(--infol)">
           <i data-lucide="trending-up" width="20" height="20" color="oklch(55% 0.22 243)"></i>
@@ -706,7 +706,7 @@ tbody tr:hover td{background:oklch(97% 0.01 265);color:var(--tx)}
       <div class="stat">
         <div class="stat-info">
           <div class="stat-lbl">Siswa Login</div>
-          <div class="stat-v">–</div>
+          <div class="stat-v">0</div>
           <div class="stat-sub">Hari ini</div>
         </div>
         <div class="stat-ico" style="background:var(--okl)">
@@ -763,7 +763,7 @@ tbody tr:hover td{background:oklch(97% 0.01 265);color:var(--tx)}
           <div style="position:relative;width:160px;height:160px">
             <canvas id="absensiDonut" width="160" height="160"></canvas>
             <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">
-              <span style="font-size:26px;font-weight:800;color:var(--tx);font-variant-numeric:tabular-nums">94%</span>
+              <span id="absPct" style="font-size:26px;font-weight:800;color:var(--tx);font-variant-numeric:tabular-nums">0%</span>
               <span style="font-size:11px;color:var(--txm);font-weight:500">Kehadiran</span>
             </div>
           </div>
@@ -771,23 +771,23 @@ tbody tr:hover td{background:oklch(97% 0.01 265);color:var(--tx)}
         <div style="display:flex;flex-direction:column;gap:9px;padding:0 4px">
           <div class="al">
             <div class="al-info"><div class="al-dot" style="background:var(--ok)"></div><span class="al-lbl">Hadir</span></div>
-            <div class="al-v" style="color:var(--ok)">1.056 <span style="font-weight:400;font-size:11px;color:var(--txm)">(94%)</span></div>
+            <div class="al-v" id="absH" style="color:var(--ok)">0 <span style="font-weight:400;font-size:11px;color:var(--txm)">(0%)</span></div>
           </div>
           <div class="al">
             <div class="al-info"><div class="al-dot" style="background:var(--info)"></div><span class="al-lbl">Izin</span></div>
-            <div class="al-v" style="color:var(--info)">29 <span style="font-weight:400;font-size:11px;color:var(--txm)">(2.6%)</span></div>
+            <div class="al-v" id="absI" style="color:var(--info)">0 <span style="font-weight:400;font-size:11px;color:var(--txm)">(0%)</span></div>
           </div>
           <div class="al">
             <div class="al-info"><div class="al-dot" style="background:var(--warn)"></div><span class="al-lbl">Sakit</span></div>
-            <div class="al-v" style="color:var(--warn)">21 <span style="font-weight:400;font-size:11px;color:var(--txm)">(1.9%)</span></div>
+            <div class="al-v" id="absS" style="color:var(--warn)">0 <span style="font-weight:400;font-size:11px;color:var(--txm)">(0%)</span></div>
           </div>
           <div class="al">
             <div class="al-info"><div class="al-dot" style="background:var(--rose)"></div><span class="al-lbl">Alfa</span></div>
-            <div class="al-v" style="color:var(--rose)">12 <span style="font-weight:400;font-size:11px;color:var(--txm)">(1.1%)</span></div>
+            <div class="al-v" id="absA" style="color:var(--rose)">0 <span style="font-weight:400;font-size:11px;color:var(--txm)">(0%)</span></div>
           </div>
           <div class="al">
             <div class="al-info"><div class="al-dot" style="background:oklch(58% 0.18 285)"></div><span class="al-lbl">Terlambat</span></div>
-            <div class="al-v" style="color:oklch(58% 0.18 285)">6 <span style="font-weight:400;font-size:11px;color:var(--txm)">(0.5%)</span></div>
+            <div class="al-v" id="absT" style="color:oklch(58% 0.18 285)">0 <span style="font-weight:400;font-size:11px;color:var(--txm)">(0%)</span></div>
           </div>
         </div>
       </div>
@@ -880,15 +880,15 @@ tbody tr:hover td{background:oklch(97% 0.01 265);color:var(--tx)}
 if(window.lucide)lucide.createIcons();
 
 // ── NILAI CHART (Bar/Line) ──
-const nilaiLabels = ['Bab 1','Bab 2','Bab 3','Bab 4','Bab 5'];
+const nilaiLabels = [];
 const nilaiData = {
-  akhir:  [78, 82, 85, 83, 88],
-  pretest:[68, 72, 70, 75, 78],
-  posttest:[82, 86, 88, 86, 92]
+  akhir: [],
+  pretest: [],
+  posttest: []
 };
 
 const nilaiCtx = document.getElementById('nilaiChart').getContext('2d');
-let nilaiChart = new Chart(nilaiCtx, {
+let nilaiChart = window.nilaiChart = new Chart(nilaiCtx, {
   type: 'bar',
   data: {
     labels: nilaiLabels,
@@ -980,12 +980,12 @@ function switchNilaiChart(el,type){
 
 // ── ABSENSI DONUT ──
 const donutCtx = document.getElementById('absensiDonut').getContext('2d');
-new Chart(donutCtx, {
+window.absensiDonut = new Chart(donutCtx, {
   type:'doughnut',
   data:{
     labels:['Hadir','Izin','Sakit','Alfa','Terlambat'],
     datasets:[{
-      data:[1056,29,21,12,6],
+      data:[0,0,0,0,0],
       backgroundColor:[
         'oklch(57% 0.18 148)',
         'oklch(55% 0.22 243)',
@@ -1014,14 +1014,14 @@ new Chart(donutCtx, {
 
 // ── ABSENSI BAR (per Bulan) ──
 const absensiCtx = document.getElementById('absensiBar').getContext('2d');
-new Chart(absensiCtx, {
+window.absensiBar = new Chart(absensiCtx, {
   type:'bar',
   data:{
     labels:['Agustus','September','Oktober','November','Desember'],
     datasets:[
       {
         label:'Hadir',
-        data:[218,215,210,208,205],
+        data:[0,0,0,0,0],
         backgroundColor:'oklch(57% 0.18 148 / .85)',
         borderColor:'oklch(57% 0.18 148)',
         borderWidth:1,borderRadius:5,borderSkipped:false,
@@ -1029,7 +1029,7 @@ new Chart(absensiCtx, {
       },
       {
         label:'Tidak Hadir',
-        data:[10,13,18,20,23],
+        data:[0,0,0,0,0],
         backgroundColor:'oklch(57% 0.22 15 / .7)',
         borderColor:'oklch(57% 0.22 15)',
         borderWidth:1,borderRadius:5,borderSkipped:false,
@@ -1177,7 +1177,19 @@ setTimeout(()=>{if(window.lucide)lucide.createIcons()},100);
         }
         localStorage.setItem('pb.guru.passphrase',pass);
         try{
-          Object.keys(localStorage).forEach(function(k){ if(k.indexOf('pb.')===0 && k!=='pb.guru.passphrase' && k!=='pb.colab.url') localStorage.removeItem(k); });
+          Object.keys(localStorage).forEach(function(k){
+            if((k.indexOf('pb.')===0 && k!=='pb.guru.passphrase' && k!=='pb.colab.url' && k!=='pb.firebase.config' && k!=='pb.session.token') || k==='jenjangOverrides_v1' || k==='murid_progres_materi_v1'){
+              localStorage.removeItem(k);
+            }
+          });
+          localStorage.setItem('pb.guru.remote_catalog_synced','1');
+          localStorage.setItem('pb.guru.remote_accounts_synced','1');
+          localStorage.setItem('pb.guru.remote_activity_synced','1');
+          localStorage.setItem('pb.accounts.user_cleared','1');
+          localStorage.setItem('pb.accounts.seeded_v2','1');
+          localStorage.setItem('pb.cached.accounts','[]');
+          localStorage.setItem('pb.guru.kelas','[]');
+          localStorage.setItem('pb.guru.bank','[]');
         }catch(e){}
         alert('Semua data sudah dikosongkan.');
         location.reload();
@@ -1207,21 +1219,78 @@ setTimeout(()=>{if(window.lucide)lucide.createIcons()},100);
     var t=q('.tb-date'); if(t) t.textContent=d.toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+' · Semester '+sem;
   }
   function setStat(i,v,sub){var s=document.querySelectorAll('.stat-strip .stat')[i];if(!s)return;s.querySelector('.stat-v').textContent=v;s.querySelector('.stat-sub').innerHTML=sub;}
+  function configuredClasses(){
+    var mod = lsJson('pb.modules.config', {}) || {};
+    var kl = Array.isArray(mod.kelasList) ? mod.kelasList : lsJson('pb.guru.kelas', []);
+    if (!Array.isArray(kl)) return [];
+    var names = kl.map(function(x){ return canon(x && x.n ? x.n : x); }).filter(Boolean);
+    if (lvl === 'ALL') return names;
+    return names.filter(function(n){ return CLASSES[lvl].indexOf(n) >= 0; });
+  }
   function render(){
-    var cls=lvl==='ALL'?ALL:CLASSES[lvl];
-    setStat(0,cls.length,lvl==='ALL'?'Kelas yang diampu':'Kelas '+lvl);
+    var cls=configuredClasses();
+    setStat(0,cls.length,cls.length?(lvl==='ALL'?'Kelas yang diampu':'Kelas '+lvl):'Belum ada kelas');
     var acc=data.accounts;
-    setStat(1,acc?acc.filter(function(a){return inLvl(a.kelas);}).length:'–',acc?'Akun siswa terdaftar':'Masukkan passphrase guru untuk melihat');
+    setStat(1,acc?acc.filter(function(a){return inLvl(a.kelas);}).length:0,acc?'Akun siswa terdaftar':'Masukkan passphrase guru untuk melihat');
     var tugas=(data.catalog.tugas||[]).concat(data.catalog.lkpd||[]).filter(function(t){return inLvl(t.kelas||t.k);});
-    var pend=0,act=data.activity;
+    var pend=0,act=data.activity||{};
     ['tugas','lkpd'].forEach(function(j){var o=act[j]||{};Object.keys(o).forEach(function(k){(o[k]||[]).forEach(function(s){if(s&&(!s.status||s.status==='Menunggu')&&(!s.kelas||inLvl(s.kelas)))pend++;});});});
     setStat(2,pend,tugas.length+' tugas/LKPD aktif · perlu dinilai');
     var badgeTugas=document.querySelector('.nav-item[data-feature="tugas"] .badge');
-    if(badgeTugas) badgeTugas.textContent = pend || tugas.length;
+    if(badgeTugas){
+      var bVal = pend || tugas.length;
+      badgeTugas.textContent = bVal;
+      badgeTugas.style.display = bVal ? '' : 'none';
+    }
     var nil=[];Object.keys(act.quiz||{}).forEach(function(k){(act.quiz[k]||[]).forEach(function(s){if(s&&s.nilai!=null&&(!s.kelas||inLvl(s.kelas)))nil.push(+s.nilai);});});
     ['tugas','lkpd'].forEach(function(j){var o=act[j]||{};Object.keys(o).forEach(function(k){(o[k]||[]).forEach(function(s){if(s&&s.nilai!=null&&s.nilai!==''&&!isNaN(+s.nilai)&&(!s.kelas||inLvl(s.kelas)))nil.push(+s.nilai);});});});
     setStat(3,nil.length?(nil.reduce(function(a,b){return a+b;},0)/nil.length).toFixed(1):'–',nil.length?'Dari '+nil.length+' nilai masuk':'Belum ada nilai');
-    renderTable(cls); renderActivity(); renderEvents(); renderLogins(); updatePrepostChart();
+    renderTable(cls); renderActivity(); renderEvents(); renderLogins(); updatePrepostChart(); updateAbsensiCharts(); updateNilaiChart();
+  }
+  function updateNilaiChart(){
+    if(!window.nilaiChart) return;
+    var act=data.activity||{}, labels=[], akhir=[];
+    ['quiz','tugas','lkpd'].forEach(function(j){
+      var o=act[j]||{};
+      Object.keys(o).forEach(function(id){
+        var vals=(o[id]||[]).filter(function(s){return s&&s.nilai!=null&&!isNaN(+s.nilai);}).map(function(s){return +s.nilai;});
+        if(vals.length){
+          labels.push(String(id).slice(0,14));
+          akhir.push(Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length));
+        }
+      });
+    });
+    window.nilaiChart.data.labels=labels.slice(-6);
+    window.nilaiChart.data.datasets[0].data=akhir.slice(-6);
+    window.nilaiChart.data.datasets[1].data=[];
+    window.nilaiChart.data.datasets[2].data=[];
+    window.nilaiChart.update('none');
+  }
+  function updateAbsensiCharts(){
+    var act=data.activity||{}, abs=act.absensi||{};
+    var counts={H:0,I:0,S:0,A:0,T:0};
+    Object.keys(abs).forEach(function(k){
+      if(k==='__CONFIG__|modules') return;
+      var rec=abs[k];
+      if(!rec || typeof rec!=='object') return;
+      Object.values(rec).forEach(function(st){
+        var v=String(st||'').toUpperCase();
+        if(v==='H'||v==='HADIR') counts.H++;
+        else if(v==='I'||v==='IZIN') counts.I++;
+        else if(v==='S'||v==='SAKIT') counts.S++;
+        else if(v==='A'||v==='ALFA') counts.A++;
+        else if(v==='T'||v==='TERLAMBAT') counts.T++;
+      });
+    });
+    var tot=counts.H+counts.I+counts.S+counts.A+counts.T;
+    var pct=function(n){return tot?Math.round((n/tot)*1000)/10:0;};
+    var pEl=document.getElementById('absPct'); if(pEl) pEl.textContent=Math.round(pct(counts.H))+'%';
+    var setRow=function(id,val){var el=document.getElementById(id);if(el) el.innerHTML=val+' <span style="font-weight:400;font-size:11px;color:var(--txm)">('+pct(val)+'%)</span>';};
+    setRow('absH',counts.H); setRow('absI',counts.I); setRow('absS',counts.S); setRow('absA',counts.A); setRow('absT',counts.T);
+    if(window.absensiDonut){
+      window.absensiDonut.data.datasets[0].data=[counts.H,counts.I,counts.S,counts.A,counts.T];
+      window.absensiDonut.update('none');
+    }
   }
   function updatePrepostChart(){
     if(!window.prepostChart) return;
@@ -1231,12 +1300,12 @@ setTimeout(()=>{if(window.lucide)lucide.createIcons()},100);
     window.prepostChart.data.datasets[0].data=clsList.map(function(k){
       var vals=[];
       ['tugas','lkpd'].forEach(function(j){var o=act[j]||{};Object.keys(o).forEach(function(id){(o[id]||[]).forEach(function(s){if(s&&s.nilai!=null&&!isNaN(+s.nilai)&&canon(s.kelas)===k)vals.push(+s.nilai);});});});
-      return vals.length?Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length):74;
+      return vals.length?Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length):0;
     });
     window.prepostChart.data.datasets[1].data=clsList.map(function(k){
       var vals=[];
       Object.keys(act.quiz||{}).forEach(function(id){(act.quiz[id]||[]).forEach(function(s){if(s&&s.nilai!=null&&!isNaN(+s.nilai)&&canon(s.kelas)===k)vals.push(+s.nilai);});});
-      return vals.length?Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length):84;
+      return vals.length?Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length):0;
     });
     window.prepostChart.update('none');
   }
