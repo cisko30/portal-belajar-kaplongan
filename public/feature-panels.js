@@ -173,7 +173,7 @@
     def.render(document.getElementById('fpB'));
   }
   function close(){ overlay.classList.remove('open'); _currentFeat=null; emitSync(); }
-  try{ window.__fpOpen = open; window.__fpClose = close; window.__fpSync = () => Promise.all([SharedCatalog.pull(), Activity.pull()]).then(emitSync); }catch(_){}
+  try{ window.__fpOpen = open; window.__fpClose = close; window.__fpSync = () => Promise.all([SharedCatalog.pull(), Activity.pull()]).then(emitSync); window.__fpToggleNotif = (el) => { if(typeof StudentNotifs!=='undefined' && StudentNotifs.toggle) StudentNotifs.toggle(el); else open('nilai'); }; }catch(_){}
   // Live-sync: kalau guru update di tab lain, panel terbuka ikut refresh
   window.addEventListener('storage', e=>{
     if(!_currentFeat || !e.key) return;
@@ -1520,6 +1520,7 @@
       const list=(Activity.local().quiz||{})[itemKey]||[];
       const s=seen(); s[itemKey]={count:list.length, sig:sig(list), at:Date.now()}; LS.set(SEEN,s);
       paintNav();
+      if(typeof StudentNotifs!=='undefined' && StudentNotifs.paintBell) StudentNotifs.paintBell();
     }
     function total(){
       if(ROLE!=='guru') return 0;
@@ -1548,7 +1549,6 @@
     let last=-1;
     function check(announce){
       const n=total();
-      if(announce && n>last && last>=0 && n>0) Guard.notify(`🔔 ${n} pengerjaan quiz baru dari siswa.`,'info');
       last=n; paintNav();
       const b=document.getElementById('fpB');
       if(_currentFeat==='quiz' && b && FEATURES.quiz) FEATURES.quiz.render(b);
@@ -1591,12 +1591,12 @@
     }
     function check(announce){
       const n=pending('tugas')+pending('lkpd');
-      if(announce && last>=0 && n>last) Guard.notify(`📥 ${n-last} tugas/LKPD baru dari siswa — siap dinilai.`,'info');
       const changed=announce && n!==last; last=n; paint();
+      if(typeof StudentNotifs!=='undefined' && StudentNotifs.paintBell) StudentNotifs.paintBell();
       const b=document.getElementById('fpB');
       if((_currentFeat==='tugas'||_currentFeat==='lkpd') && b && changed) FEATURES[_currentFeat].render(b);
     }
-    function markSeen(){ paint(); }
+    function markSeen(){ paint(); if(typeof StudentNotifs!=='undefined' && StudentNotifs.paintBell) StudentNotifs.paintBell(); }
     function start(){
       if(ROLE!=='guru') return;
       check(false);
@@ -1610,6 +1610,327 @@
       window.addEventListener('focus',()=>{ Activity.pull().then(()=>check(true)); });
     }
     return {check, paint, markSeen, start};
+  })();
+
+  // ── StudentNotifs: pusat notifikasi lonceng guru/admin (Tugas, LKPD, Quiz baru dari siswa) ──
+  const StudentNotifs = (function(){
+    const SEEN_KEY = 'pb.guru.notifSeenKeys';
+    let activeTab = 'all';
+    let popEl = null;
+    let knownKeys = null;
+    let outsideHooked = false;
+
+    const getSeen = () => LS.get(SEEN_KEY, {}) || {};
+    const saveSeen = (obj) => {
+      const keys = Object.keys(obj);
+      if (keys.length > 500) {
+        keys.sort((a, b) => (obj[a] || 0) - (obj[b] || 0))
+          .slice(0, keys.length - 500)
+          .forEach((k) => { delete obj[k]; });
+      }
+      LS.set(SEEN_KEY, obj);
+    };
+
+    const parseTimeMs = (str) => {
+      if (!str) return 0;
+      const iso = Date.parse(str);
+      if (!isNaN(iso)) return iso;
+      // Format Indonesia umum: "27/11/2026, 01.25.00" atau "27/11/2026 01:25"
+      const m = String(str).match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(?:[\s,]+(\d{1,2})[:.](\d{1,2})(?:[:.](\d{1,2}))?)?/);
+      if (m) {
+        const y = m[3].length === 2 ? 2000 + (+m[3]) : (+m[3]);
+        return new Date(y, (+m[2]) - 1, +m[1], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0)).getTime();
+      }
+      return 0;
+    };
+
+    function collect(){
+      if (ROLE !== 'guru') return [];
+      const act = Activity.local();
+      const catTugas = LS.get(SK('tugas'), []) || [];
+      const catLkpd  = LS.get(SK('lkpd'),  []) || [];
+      const catQuiz  = LS.get(SK('quiz'),  []) || [];
+      const seenMap  = getSeen();
+      const items    = [];
+
+      const pushEntry = (kind, rawKey, title, s, orderIdx) => {
+        if (!s || typeof s !== 'object' || (!s.nama && !s.userId)) return;
+        const uid = String(s.userId || s.nis || s.nama || '').trim();
+        const sig = `${kind}|${rawKey}|${uid}|${s.ts || ''}|${kind === 'quiz' ? (s.benar + ':' + s.total) : (s.kode || '')}`;
+        const ungraded = kind !== 'quiz' && s.status !== 'Selesai' && s.status !== 'Revisi';
+        const unread = !seenMap[sig] && (kind === 'quiz' || ungraded);
+        let detail = '';
+        if (kind === 'quiz') {
+          const nilai = s.nilai != null ? s.nilai : (s.total ? Math.round((s.benar / s.total) * 100) : 0);
+          detail = `Skor ${s.benar ?? 0}/${s.total ?? 0} · Nilai ${nilai}`;
+        } else {
+          detail = s.jawaban ? String(s.jawaban).slice(0, 72) : (s.f ? 'Melampirkan file' : 'Mengirim pekerjaan');
+        }
+        items.push({
+          kind,
+          rawKey: String(rawKey),
+          title,
+          nama: String(s.nama || 'Siswa'),
+          kelas: String(s.kelas || '-'),
+          detail,
+          hasFile: !!s.f,
+          late: !!s.terlambat,
+          ts: String(s.ts || ''),
+          sortMs: parseTimeMs(s.ts),
+          orderIdx,
+          ungraded,
+          unread,
+          sig
+        });
+      };
+
+      let seq = 0;
+      Object.entries(act.tugas || {}).forEach(([k, arr]) => {
+        const meta = catTugas[+k];
+        const title = (meta && meta.j) || ('Tugas #' + ((+k) + 1));
+        (arr || []).forEach((s) => pushEntry('tugas', k, title, s, seq++));
+      });
+      Object.entries(act.lkpd || {}).forEach(([k, arr]) => {
+        if (k === 'game-progress') return;
+        const meta = catLkpd[+k];
+        const title = (meta && meta.j) || ('LKPD #' + ((+k) + 1));
+        (arr || []).forEach((s) => pushEntry('lkpd', k, title, s, seq++));
+      });
+      Object.entries(act.quiz || {}).forEach(([k, arr]) => {
+        let title = k;
+        const idx = +k;
+        if (!isNaN(idx) && catQuiz[idx] && catQuiz[idx].j) title = catQuiz[idx].j;
+        else if (catQuiz.some((q) => q && q.j === k)) title = k;
+        (arr || []).forEach((s) => pushEntry('quiz', k, title, s, seq++));
+      });
+
+      items.sort((a, b) => (b.unread - a.unread) || (b.sortMs - a.sortMs) || (b.orderIdx - a.orderIdx));
+      return items;
+    }
+
+    function paintBell(items){
+      if (ROLE !== 'guru') return;
+      const list = items || collect();
+      const unread = list.filter((it) => it.unread).length;
+      const btn = document.getElementById('btnNotif');
+      const badge = document.getElementById('notifBadge');
+      const dot = document.getElementById('notifDot');
+      if (badge) {
+        if (unread > 0) {
+          badge.style.display = 'flex';
+          badge.textContent = unread > 99 ? '99+' : String(unread);
+        } else {
+          badge.style.display = 'none';
+          badge.textContent = '0';
+        }
+      }
+      if (dot) dot.style.display = (!badge && unread > 0) ? 'block' : 'none';
+      if (btn) {
+        btn.classList.toggle('has-notif', unread > 0);
+        btn.title = unread > 0
+          ? `${unread} notifikasi baru dari siswa (Tugas, LKPD, Quiz)`
+          : 'Notifikasi Siswa — Semua sudah dibaca';
+      }
+    }
+
+    function ringBell(){
+      const btn = document.getElementById('btnNotif');
+      if (!btn) return;
+      btn.classList.remove('bell-ring');
+      void btn.offsetWidth;
+      btn.classList.add('bell-ring');
+      setTimeout(() => btn.classList.remove('bell-ring'), 800);
+    }
+
+    function check(announce){
+      if (ROLE !== 'guru') return;
+      const items = collect();
+      paintBell(items);
+      const currentSet = new Set(items.map((it) => it.sig));
+      if (knownKeys === null) {
+        knownKeys = currentSet;
+      } else {
+        const arrivals = items.filter((it) => it.unread && !knownKeys.has(it.sig));
+        knownKeys = currentSet;
+        if (announce && arrivals.length > 0) {
+          ringBell();
+          const first = arrivals[0];
+          const label = first.kind === 'quiz' ? 'mengerjakan Quiz' : (first.kind === 'lkpd' ? 'mengirim LKPD' : 'mengirim Tugas');
+          const extra = arrivals.length > 1 ? ` (+${arrivals.length - 1} lainnya)` : '';
+          Guard.notify(`🔔 ${first.nama} (${first.kelas}) ${label}: ${first.title}${extra}`, 'info');
+        }
+      }
+      if (popEl && popEl.parentNode) renderPopover();
+    }
+
+    function markOneSeen(item){
+      if (!item) return;
+      const s = getSeen();
+      s[item.sig] = Date.now();
+      saveSeen(s);
+      if (item.kind === 'quiz') QuizAlerts.markSeen(item.rawKey);
+      paintBell();
+    }
+
+    function markAllSeen(){
+      const items = collect();
+      const s = getSeen();
+      const now = Date.now();
+      items.forEach((it) => { s[it.sig] = now; });
+      saveSeen(s);
+      Object.keys(Activity.local().quiz || {}).forEach((k) => QuizAlerts.markSeen(k));
+      paintBell(items.map((it) => ({ ...it, unread: false })));
+      if (popEl && popEl.parentNode) renderPopover();
+    }
+
+    function closePopover(){
+      if (popEl && popEl.parentNode) popEl.remove();
+      popEl = null;
+    }
+
+    function positionPopover(anchor){
+      if (!popEl) return;
+      const vw = window.innerWidth || document.documentElement.clientWidth || 1024;
+      const width = Math.min(390, Math.max(290, vw - 24));
+      popEl.style.width = width + 'px';
+      if (anchor && anchor.getBoundingClientRect) {
+        const r = anchor.getBoundingClientRect();
+        const right = Math.max(12, vw - r.right);
+        const top = Math.min((window.innerHeight || 700) - 180, r.bottom + 8);
+        popEl.style.top = top + 'px';
+        popEl.style.right = right + 'px';
+      } else {
+        popEl.style.top = '58px';
+        popEl.style.right = '16px';
+      }
+    }
+
+    function renderPopover(){
+      if (!popEl) return;
+      const all = collect();
+      const unread = all.filter((x) => x.unread).length;
+      const counts = {
+        all: all.length,
+        tugas: all.filter((x) => x.kind === 'tugas').length,
+        lkpd: all.filter((x) => x.kind === 'lkpd').length,
+        quiz: all.filter((x) => x.kind === 'quiz').length
+      };
+      const filtered = (activeTab === 'all' ? all : all.filter((x) => x.kind === activeTab)).slice(0, 30);
+      const kindMeta = {
+        tugas: { ico: '📝', lbl: 'Tugas', bg: '#eef2ff', fg: '#4338ca' },
+        lkpd:  { ico: '📋', lbl: 'LKPD',  bg: '#ecfeff', fg: '#0e7490' },
+        quiz:  { ico: '⚡', lbl: 'Quiz',  bg: '#fef3c7', fg: '#b45309' }
+      };
+
+      popEl.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;border-bottom:1px solid var(--bd, #e2e8f0)">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:15px;font-weight:800;color:var(--tx, #0f172a)">🔔 Notifikasi Siswa</span>
+            ${unread > 0 ? `<span style="background:var(--rose, #e11d48);color:#fff;border-radius:999px;font-size:10.5px;font-weight:700;padding:2px 7px">${unread} baru</span>` : ''}
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <button type="button" id="pbNotifReadAll" style="border:0;background:transparent;color:var(--p, #4f46e5);font:600 11.5px inherit;cursor:pointer;padding:4px 6px;border-radius:6px;${unread ? '' : 'opacity:.45;pointer-events:none'}">✓ Tandai dibaca</button>
+            <button type="button" id="pbNotifClose" title="Tutup" style="border:1px solid var(--bd, #e2e8f0);background:var(--surf2, #f8fafc);color:var(--tx2, #475569);width:24px;height:24px;border-radius:7px;cursor:pointer;font-size:12px;line-height:1">✕</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid var(--bd, #e2e8f0);background:var(--surf2, #f8fafc)">
+          ${[['all', 'Semua'], ['tugas', 'Tugas'], ['lkpd', 'LKPD'], ['quiz', 'Quiz']].map(([k, lbl]) => {
+            const on = activeTab === k;
+            return `<button type="button" data-ntab="${k}" style="flex:1;border:1px solid ${on ? 'var(--pm, #c7d2fe)' : 'transparent'};background:${on ? 'var(--pl, #eef2ff)' : 'transparent'};color:${on ? 'var(--p, #4f46e5)' : 'var(--tx2, #475569)'};font:700 11.5px inherit;padding:5px 6px;border-radius:7px;cursor:pointer">${lbl} (${counts[k]})</button>`;
+          }).join('')}
+        </div>
+        <div style="overflow-y:auto;max-height:360px;padding:6px">
+          ${filtered.length ? filtered.map((it, idx) => {
+            const km = kindMeta[it.kind] || kindMeta.tugas;
+            return `<button type="button" data-nidx="${idx}" style="width:100%;text-align:left;border:1px solid ${it.unread ? 'var(--pm, #c7d2fe)' : 'transparent'};background:${it.unread ? 'var(--pl, #eef2ff)' : 'transparent'};border-radius:10px;padding:9px 10px;margin-bottom:4px;cursor:pointer;display:flex;gap:9px;align-items:flex-start;font:inherit;transition:background .12s">
+              <div style="width:32px;height:32px;border-radius:9px;background:${km.bg};color:${km.fg};display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0">${km.ico}</div>
+              <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px">
+                  <span style="font-weight:700;font-size:12.5px;color:var(--tx, #0f172a)">${esc(it.nama)}</span>
+                  <span style="font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:999px;background:var(--surf2, #f1f5f9);color:var(--tx2, #475569)">${esc(it.kelas)}</span>
+                  ${it.unread ? '<span style="font-size:9.5px;font-weight:800;padding:1px 6px;border-radius:999px;background:var(--rose, #e11d48);color:#fff">BARU</span>' : ''}
+                  ${it.ungraded ? '<span style="font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:999px;background:#fef3c7;color:#b45309">Menunggu nilai</span>' : ''}
+                  ${it.late ? '<span style="font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:999px;background:#fee2e2;color:#b91c1c">Terlambat</span>' : ''}
+                </div>
+                <div style="font-size:12px;font-weight:600;color:var(--tx2, #334155);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${km.lbl}: ${esc(it.title)}</div>
+                <div style="font-size:11px;color:var(--txm, #64748b);margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                  <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:210px">${esc(it.detail)}</span>
+                  ${it.hasFile ? '<span style="color:#4f46e5;font-weight:600">📎 File</span>' : ''}
+                  ${it.ts ? `<span style="margin-left:auto;font-size:10.5px">${esc(it.ts)}</span>` : ''}
+                </div>
+              </div>
+            </button>`;
+          }).join('') : `<div style="padding:28px 16px;text-align:center;color:var(--txm, #64748b);font-size:12.5px">Belum ada kiriman ${activeTab === 'all' ? 'tugas, LKPD, atau quiz' : activeTab.toUpperCase()} dari siswa.</div>`}
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-top:1px solid var(--bd, #e2e8f0);background:var(--surf2, #f8fafc)">
+          <button type="button" id="pbNotifRefresh" style="border:1px solid var(--bd, #e2e8f0);background:var(--surf, #fff);color:var(--tx2, #334155);font:600 11.5px inherit;padding:5px 10px;border-radius:8px;cursor:pointer">🔄 Segarkan</button>
+          <button type="button" id="pbNotifNilai" style="border:0;background:var(--p, #4f46e5);color:#fff;font:700 11.5px inherit;padding:6px 12px;border-radius:8px;cursor:pointer">📊 Buka Rekap Nilai →</button>
+        </div>
+      `;
+
+      const closeBtn = popEl.querySelector('#pbNotifClose');
+      if (closeBtn) closeBtn.onclick = closePopover;
+      const readAllBtn = popEl.querySelector('#pbNotifReadAll');
+      if (readAllBtn) readAllBtn.onclick = () => markAllSeen();
+      const refreshBtn = popEl.querySelector('#pbNotifRefresh');
+      if (refreshBtn) refreshBtn.onclick = async () => {
+        refreshBtn.disabled = true; refreshBtn.textContent = 'Memuat…';
+        await Activity.pull();
+        refreshBtn.disabled = false;
+        check(false);
+      };
+      const nilaiBtn = popEl.querySelector('#pbNotifNilai');
+      if (nilaiBtn) nilaiBtn.onclick = () => { closePopover(); open('nilai'); };
+      popEl.querySelectorAll('[data-ntab]').forEach((b) => {
+        b.onclick = () => { activeTab = b.dataset.ntab; renderPopover(); };
+      });
+      popEl.querySelectorAll('[data-nidx]').forEach((b) => {
+        b.onclick = () => {
+          const item = filtered[+b.dataset.nidx];
+          if (!item) return;
+          markOneSeen(item);
+          closePopover();
+          open(item.kind);
+        };
+      });
+    }
+
+    function toggle(anchor){
+      if (ROLE !== 'guru') return open('nilai');
+      if (popEl && popEl.parentNode) { closePopover(); return; }
+      popEl = document.createElement('div');
+      popEl.id = 'pbNotifPop';
+      popEl.style.cssText = 'position:fixed;z-index:10020;background:var(--surf, #fff);color:var(--tx, #0f172a);border:1px solid var(--bd, #e2e8f0);border-radius:14px;box-shadow:0 20px 50px rgba(15,23,42,.22);overflow:hidden;font-family:inherit';
+      popEl.onclick = (e) => e.stopPropagation();
+      document.body.appendChild(popEl);
+      positionPopover(anchor || document.getElementById('btnNotif'));
+      renderPopover();
+      if (!outsideHooked) {
+        outsideHooked = true;
+        document.addEventListener('click', (e) => {
+          if (!popEl || !popEl.parentNode) return;
+          const bell = document.getElementById('btnNotif');
+          if (popEl.contains(e.target) || (bell && bell.contains(e.target))) return;
+          closePopover();
+        });
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && popEl && popEl.parentNode) closePopover();
+        });
+        window.addEventListener('resize', () => {
+          if (popEl && popEl.parentNode) positionPopover(document.getElementById('btnNotif'));
+        });
+      }
+      // Ambil pembaruan terbaru secara senyap di latar belakang
+      Activity.pull().then((ok) => { if (ok) check(false); });
+    }
+
+    function start(){
+      if (ROLE !== 'guru') return;
+      check(false);
+      window.addEventListener('pb:sync', () => check(true));
+    }
+
+    return { collect, check, paintBell, markAllSeen, toggle, closePopover, start };
   })();
 
   // ── util: kompresi gambar & baca file ringan (lewati DataURL ganda saat Firebase aktif) ──
@@ -3791,6 +4112,7 @@
         emitSync(); FeatureConfig.applySidebarConfig();
       })();
       SubAlerts.start();
+      StudentNotifs.start();
     }
     FeatureConfig.applySidebarConfig();
 

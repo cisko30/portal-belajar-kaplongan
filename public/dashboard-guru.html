@@ -324,8 +324,20 @@ body{
 .notif-dot{
   position:absolute;top:6px;right:6px;
   width:7px;height:7px;border-radius:50%;
-  background:var(--rose);border:1.5px solid var(--surf)
+  background:var(--rose);border:1.5px solid var(--surf);
+  display:none
 }
+.notif-badge{
+  position:absolute;top:-5px;right:-5px;
+  min-width:18px;height:18px;padding:0 5px;
+  border-radius:999px;background:var(--rose);color:#fff;
+  font-size:10px;font-weight:800;line-height:1;
+  display:none;align-items:center;justify-content:center;
+  border:2px solid var(--surf);box-shadow:0 2px 6px rgba(244,63,94,.4)
+}
+.tb-btn.has-notif{border-color:rgba(244,63,94,.45)}
+@keyframes pbBellRing{0%{transform:rotate(0)}20%{transform:rotate(14deg)}40%{transform:rotate(-12deg)}60%{transform:rotate(8deg)}80%{transform:rotate(-5deg)}100%{transform:rotate(0)}}
+.tb-btn.bell-ring svg{animation:pbBellRing .7s ease;transform-origin:top center}
 
 /* ── SCROLL AREA ── */
 .content{flex:1;overflow-y:auto;padding:28px}
@@ -667,9 +679,10 @@ tbody tr:hover td{background:oklch(97% 0.01 265);color:var(--tx)}
         <input id="tbSearchInput" type="text" placeholder="Cari materi, siswa, nilai…" style="border:0;background:transparent;outline:none;font:inherit;color:var(--tx);width:170px"/>
       </div>
       <div class="tb-btn" id="btnThemeToggle" title="Ubah Mode Gelap / Terang">🌙</div>
-      <div class="tb-btn" id="btnNotif" title="Notifikasi Pengumpulan &amp; Quiz">
+      <div class="tb-btn" id="btnNotif" title="Notifikasi Baru dari Siswa">
         <i data-lucide="bell" width="16" height="16"></i>
-        <span class="notif-dot"></span>
+        <span class="notif-dot" id="notifDot" style="display:none"></span>
+        <span class="notif-badge" id="notifBadge" style="display:none">0</span>
       </div>
       <div class="tb-btn" id="btnSettings" title="Pengaturan Cloud &amp; Sinkronisasi">
         <i data-lucide="settings" width="16" height="16"></i>
@@ -1486,7 +1499,7 @@ setTimeout(()=>{if(window.lucide)lucide.createIcons()},100);
   document.querySelectorAll('.content-hd .chip-select[data-lvl]').forEach(function(b){
     b.addEventListener('click',function(){document.querySelectorAll('.content-hd .chip-select').forEach(function(x){x.classList.remove('on');});b.classList.add('on');lvl=b.dataset.lvl;render();});
   });
-  var bn=document.getElementById('btnNotif'); if(bn) bn.addEventListener('click',function(){ if(window.__fpOpen) window.__fpOpen('nilai'); });
+  var bn=document.getElementById('btnNotif'); if(bn) bn.addEventListener('click',function(ev){ ev.stopPropagation(); if(window.__fpToggleNotif) window.__fpToggleNotif(bn); else if(window.__fpOpen) window.__fpOpen('nilai'); });
   var bs=document.getElementById('btnSettings'); if(bs) bs.addEventListener('click',function(){ if(window.__fpOpen) window.__fpOpen('pengaturan'); });
   var pill=document.getElementById('colabStatusPill'); if(pill) pill.addEventListener('click',function(){ if(window.__fpOpen) window.__fpOpen('pengaturan'); });
   function updateColabPill(){
