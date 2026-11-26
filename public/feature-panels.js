@@ -1029,24 +1029,38 @@
           if(l) entry.l=l;
           if(file){
             btn.disabled=true;
+            const prevTxt=btn.textContent; btn.textContent='Mengunggah…';
             try{
+              let uploadFile=file;
+              if(/^image\/(jpeg|jpg|png|webp)$/i.test(file.type||'') && file.size>350000){
+                setStat(`Mengompres gambar "${file.name}"…`,'#0369a1');
+                const comp=await compressImage(file,1440,0.8);
+                if(comp && comp._blob) uploadFile=new File([comp._blob],comp.name,{type:'image/jpeg'});
+                else if(comp && comp.data && comp.data.startsWith('data:')) uploadFile=new File([await (await fetch(comp.data)).blob()],comp.name,{type:'image/jpeg'});
+              }
               if(Drive.state().ready){
                 const isFb = window.colabDb && window.colabDb.isFirebase && window.colabDb.isFirebase();
-                setStat(isFb ? `Mengunggah "${file.name}" ke Firebase Cloud…` : `Mengunggah "${file.name}" ke Cloud…`,'#0369a1');
-                const up=await Drive.upload(file, entry.k);
+                const label = isFb ? 'Firebase Cloud' : 'Cloud';
+                setStat(`Mengunggah "${uploadFile.name}" ke ${label}…`,'#0369a1');
+                const up=await Drive.upload(uploadFile, entry.k, (p)=>{
+                  if(p && typeof p.pct==='number'){
+                    setStat(`Mengunggah "${uploadFile.name}" ke ${label}… ${p.pct}%`,'#0369a1');
+                    btn.textContent=`${p.pct}%`;
+                  }
+                });
                 entry.f={name:up.name,size:up.size,type:up.mimeType,data:up.viewLink,preview:up.previewLink,download:up.downloadLink,id:up.id,drive:!up.firebaseFile,firebaseFile:!!up.firebaseFile};
                 setStat(isFb ? '✅ Berhasil diunggah ke Firebase Cloud.' : '✅ Berhasil diunggah ke Cloud.','#047857');
               }else{
-                if(file.size>5*1048576){btn.disabled=false;return alert('Google Drive belum aktif, jadi file dibatasi 5MB. Aktifkan Drive untuk file besar.');}
-                const data=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(file);});
-                entry.f={name:file.name,size:file.size,type:file.type,data};
+                if(uploadFile.size>5*1048576){btn.disabled=false;btn.textContent=prevTxt;return alert('Google Drive belum aktif, jadi file dibatasi 5MB. Aktifkan Drive untuk file besar.');}
+                const data=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsDataURL(uploadFile);});
+                entry.f={name:uploadFile.name,size:uploadFile.size,type:uploadFile.type,data};
                 setStat('Disimpan lokal (Drive belum aktif).','#b45309');
               }
             }catch(err){
-              btn.disabled=false;
+              btn.disabled=false; btn.textContent=prevTxt;
               return alert('Gagal mengunggah: '+(err&&err.message?err.message:err));
             }
-            btn.disabled=false;
+            btn.disabled=false; btn.textContent=prevTxt;
           }
           list.push(entry);save();draw();
         };
@@ -1105,14 +1119,14 @@
       }
       return p;
     }
-    async function upload(file, kelas){
+    async function upload(file, kelas, onProgress){
       if(window.colabDb && window.colabDb.whenReady) await window.colabDb.whenReady();
       let p=askPass(false);
       const hasTok = !!(window.colabDb && window.colabDb.getToken && window.colabDb.getToken());
       if(!p && !hasTok) throw new Error('Passphrase guru dibutuhkan.');
       const send=async(pw)=>{
         if(window.colabDb && window.colabDb.isReady()){
-          return await window.colabDb.files.upload(file, kelas||'', pw);
+          return await window.colabDb.files.upload(file, kelas||'', pw, onProgress);
         }
         const fd=new FormData(); fd.append('file',file); fd.append('kelas',kelas||'');
         const r=await fetch('/api/drive/materials',{method:'POST',headers:{'x-guru-passphrase':pw},body:fd});
@@ -1333,7 +1347,7 @@
       };
     }
     /** Siswa mengirim satu pengumpulan/hasil quiz. */
-    async function submit(jenis, itemKey, entry){
+    async function submit(jenis, itemKey, entry, onProgress){
       const all=local(); all[jenis]=all[jenis]||{};
       const list=(all[jenis][itemKey]||[]).slice();
       const at=list.findIndex(s=>s&&s.userId===entry.userId);
@@ -1342,9 +1356,13 @@
 
       try{
         if(window.colabDb && window.colabDb.isReady()){
-          cache(await window.colabDb.submissions.submit(jenis, String(itemKey), entry));
+          cache(await window.colabDb.submissions.submit(jenis, String(itemKey), entry, onProgress));
           emitSync();
           return true;
+        }
+        // Fallback jika mode non-Firebase mendapat attachment _blob
+        if(entry && entry.f && entry.f._blob && !entry.f.data && typeof FileReader!=='undefined'){
+          entry.f.data = await new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(entry.f._blob); });
         }
         const r=await fetch('/api/drive/materials?submit=1',{
           method:'POST',headers:{'Content-Type':'application/json'},
@@ -1471,14 +1489,15 @@
       }catch(_){}
     };
     lastDigest = calcDigest();
-    const intervalMs = (window.colabDb.isFirebase && window.colabDb.isFirebase()) ? 45000 : 20000;
+    const isFb = !!(window.colabDb.isFirebase && window.colabDb.isFirebase());
+    const intervalMs = isFb ? 180000 : 20000; // Firebase sudah pakai onSnapshot real-time; cukup polling cadangan 3 menit
     setInterval(()=>syncOnce(true), intervalMs);
     window.addEventListener('pb:sync', ()=>{
       const nextDigest = calcDigest();
       if(nextDigest !== lastDigest){ lastDigest = nextDigest; refreshPanel(); }
     });
-    window.addEventListener('focus', ()=>syncOnce(false));
-    document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) syncOnce(false); });
+    window.addEventListener('focus', ()=>{ if(!isFb || (Date.now()-lastSyncAt)>45000) syncOnce(false); });
+    document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && (!isFb || (Date.now()-lastSyncAt)>45000)) syncOnce(false); });
   })();
 
   // ── QuizAlerts: indikator "pengerjaan baru" untuk guru ──
@@ -1537,6 +1556,11 @@
     function startPolling(){
       if(ROLE!=='guru') return;
       check(false);
+      window.addEventListener('pb:sync', ()=>check(true));
+      if(window.firebaseDb && window.firebaseDb.isReady()){
+        setTimeout(()=>{ Activity.pull().then(()=>check(true)); }, 350);
+        return;
+      }
       Activity.pull().then(()=>check(true));
       setInterval(()=>{ Activity.pull().then(()=>check(true)); }, 60000);
       window.addEventListener('focus',()=>{ Activity.pull().then(()=>check(true)); });
@@ -1576,6 +1600,11 @@
     function start(){
       if(ROLE!=='guru') return;
       check(false);
+      window.addEventListener('pb:sync', ()=>check(true));
+      if(window.firebaseDb && window.firebaseDb.isReady()){
+        setTimeout(()=>{ Activity.pull().then(()=>check(true)); }, 350);
+        return;
+      }
       Activity.pull().then(()=>check(true));
       setInterval(()=>{ Activity.pull().then(()=>check(true)); }, 30000);
       window.addEventListener('focus',()=>{ Activity.pull().then(()=>check(true)); });
@@ -1583,9 +1612,17 @@
     return {check, paint, markSeen, start};
   })();
 
-  // ── util: baca file jadi dataURL (auto-kompresi foto max 1280px JPEG) ──
-  const compressImage = (file, maxDim=1280, quality=0.78) => new Promise((res)=>{
-    const fallback = ()=>{ const r=new FileReader(); r.onload=()=>res({name:file.name,size:file.size,type:file.type,data:r.result}); r.onerror=()=>res(null); r.readAsDataURL(file); };
+  // ── util: kompresi gambar & baca file ringan (lewati DataURL ganda saat Firebase aktif) ──
+  const isFirebaseActive = () => !!(window.colabDb && window.colabDb.isFirebase && window.colabDb.isFirebase());
+  const compressImage = (file, maxDim=1280, quality=0.75) => new Promise((res)=>{
+    const fallback = ()=>{
+      if(isFirebaseActive() && file.size>45000){
+        const out={name:file.name,size:file.size,type:file.type||'image/jpeg',data:''};
+        Object.defineProperty(out,'_blob',{value:file,enumerable:false,configurable:true});
+        return res(out);
+      }
+      const r=new FileReader(); r.onload=()=>res({name:file.name,size:file.size,type:file.type,data:r.result}); r.onerror=()=>res(null); r.readAsDataURL(file);
+    };
     try{
       const url=URL.createObjectURL(file);
       const img=new Image();
@@ -1595,6 +1632,16 @@
           if(w>maxDim||h>maxDim){ const s=Math.min(maxDim/w,maxDim/h); w=Math.round(w*s); h=Math.round(h*s); }
           const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
           const ctx=cv.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+          if(isFirebaseActive() && typeof cv.toBlob==='function'){
+            cv.toBlob((blob)=>{
+              URL.revokeObjectURL(url);
+              if(!blob) return fallback();
+              const out={name:file.name.replace(/\.\w+$/,'.jpg'),size:blob.size,type:'image/jpeg',data:'',compressed:true};
+              Object.defineProperty(out,'_blob',{value:blob,enumerable:false,configurable:true});
+              res(out);
+            },'image/jpeg',quality);
+            return;
+          }
           const data=cv.toDataURL('image/jpeg',quality);
           URL.revokeObjectURL(url);
           res({name:file.name.replace(/\.\w+$/,'.jpg'),size:Math.round(data.length*0.75),type:'image/jpeg',data,compressed:true});
@@ -1611,6 +1658,11 @@
       if(comp && comp.size <= maxMB*1048576) return res(comp);
     }
     if(file.size > maxMB*1048576) return rej(new Error(`File terlalu besar (maks ${maxMB}MB)`));
+    if(isFirebaseActive() && file.size>45000){
+      const out={name:file.name,size:file.size,type:file.type||'application/octet-stream',data:''};
+      Object.defineProperty(out,'_blob',{value:file,enumerable:false,configurable:true});
+      return res(out);
+    }
     const r=new FileReader(); r.onload=()=>res({name:file.name,size:file.size,type:file.type,data:r.result}); r.onerror=rej; r.readAsDataURL(file);
   });
   const fmtSize=(n)=>n<1024?n+' B':n<1048576?(n/1024).toFixed(1)+' KB':(n/1048576).toFixed(1)+' MB';
@@ -1730,6 +1782,7 @@
               ${upOk?`<input type="file" id="tf" class="fp-input" style="width:220px"/>`:''}
               <button class="fp-btn sm" id="tAdd">+ Tugas</button>
             </div>
+            <div id="tStat" style="font-size:12px;color:#475569"></div>
           </div>
           <table class="fp-table"><thead><tr><th>Judul</th><th>Kelas</th><th>Deadline</th><th>Pengumpulan</th><th>Status</th><th></th></tr></thead>
           <tbody>${list.map((t,i)=>{
@@ -1742,12 +1795,43 @@
               <button class="fp-btn sm ghost" data-t="${i}">Toggle</button>
               <button class="fp-btn sm danger" data-d="${i}">Hapus</button></td></tr>`;
           }).join('')}</tbody></table>`;
-          b.querySelector('#tAdd').onclick=async()=>{
+          b.querySelector('#tAdd').onclick=async(ev)=>{
+            const btn=ev.currentTarget;
             const j=b.querySelector('#tj').value.trim(); if(!j) return alert('Judul wajib');
             const entry={j,k:b.querySelector('#tk').value,d:b.querySelector('#td').value.trim()||'TBD',s:'Aktif',desc:b.querySelector('#tdesc').value.trim()};
             const l=b.querySelector('#tl').value.trim(); if(l) entry.l=l;
             const tfEl=b.querySelector('#tf');
-            if(tfEl&&tfEl.files&&tfEl.files[0]){ try{const f=await readFile(tfEl.files[0]); if(f) entry.f=f;}catch(e){return alert(e.message);} }
+            const statEl=b.querySelector('#tStat');
+            if(tfEl&&tfEl.files&&tfEl.files[0]){
+              const rawFile=tfEl.files[0];
+              if(rawFile.size>8*1048576) return alert('Ukuran file maksimal 8 MB.');
+              btn.disabled=true; const prevTxt=btn.textContent; btn.textContent='Mengunggah…';
+              if(statEl){ statEl.style.color='#0369a1'; statEl.textContent=`⏳ Menyiapkan "${rawFile.name}"…`; }
+              try{
+                if(Drive.state().ready){
+                  let upFile=rawFile;
+                  if(/^image\/(jpeg|jpg|png|webp)$/i.test(rawFile.type||'') && rawFile.size>350000){
+                    const comp=await compressImage(rawFile,1280,0.78);
+                    if(comp && comp._blob) upFile=new File([comp._blob],comp.name,{type:'image/jpeg'});
+                    else if(comp && comp.data && comp.data.startsWith('data:')) upFile=new File([await (await fetch(comp.data)).blob()],comp.name,{type:'image/jpeg'});
+                  }
+                  const up=await Drive.upload(upFile, entry.k, (p)=>{
+                    if(p && typeof p.pct==='number'){
+                      btn.textContent=`${p.pct}%`;
+                      if(statEl) statEl.textContent=`⏳ Mengunggah "${upFile.name}" ke Cloud… ${p.pct}%`;
+                    }
+                  });
+                  entry.f={name:up.name,size:up.size,type:up.mimeType,data:up.viewLink,preview:up.previewLink,download:up.downloadLink,id:up.id,drive:!up.firebaseFile,firebaseFile:!!up.firebaseFile};
+                }else{
+                  const f=await readFile(rawFile); if(f) entry.f=f;
+                }
+              }catch(e){
+                btn.disabled=false; btn.textContent=prevTxt;
+                if(statEl){ statEl.style.color='#b91c1c'; statEl.textContent='⚠️ Gagal: '+(e.message||e); }
+                return alert(e.message||e);
+              }
+              btn.disabled=false; btn.textContent=prevTxt;
+            }
             list.push(entry); save(); draw();
           };
           b.querySelectorAll('[data-ed]').forEach(x=>x.onclick=()=>{
@@ -1833,7 +1917,8 @@
               <h3 style="margin:0 0 10px">Kerjakan: ${esc(t.j)}</h3>
               <input class="fp-input" id="sN" placeholder="Nama kamu" style="width:100%;margin-bottom:8px"/>
               <textarea class="fp-input" id="sJ" placeholder="Tulis jawaban..." style="width:100%;min-height:100px;resize:vertical;margin-bottom:8px"></textarea>
-              <input type="file" id="sF" class="fp-input" style="width:100%;margin-bottom:12px"/>
+              <input type="file" id="sF" class="fp-input" style="width:100%;margin-bottom:8px"/>
+              <div id="xStat" style="font-size:12px;color:#0369a1;margin-bottom:8px;min-height:16px"></div>
               <div style="display:flex;gap:8px;justify-content:flex-end"><button class="fp-btn sm ghost" id="xC">Batal</button><button class="fp-btn sm" id="xS">Kirim</button></div></div>`;
             document.body.appendChild(w); w.querySelector('#xC').onclick=()=>w.remove();
             w.querySelector('#xS').onclick=async()=>{
@@ -1847,17 +1932,29 @@
               if(jawaban && jawaban.length<10 && !file) errs.push('• Jawaban terlalu singkat (minimal 10 karakter).');
               if(file){
                 if(file.size>5*1024*1024) errs.push('• Ukuran file maksimal 5 MB.');
-                if(!/\.(pdf|docx?|pptx?|xlsx?|txt|png|jpe?g|html?|zip)$/i.test(file.name)) errs.push('• Tipe file tidak didukung (PDF, Word, PPT, Excel, gambar, HTML, ZIP).');
+                if(!/\.(pdf|docx?|pptx?|xlsx?|txt|png|jpe?g|webp|html?|zip)$/i.test(file.name)) errs.push('• Tipe file tidak didukung (PDF, Word, PPT, Excel, gambar, HTML, ZIP).');
               }
               if(errs.length) return alert('Tugas belum bisa dikirim:\n'+errs.join('\n'));
               const dl=Date.parse(t.d); const telat=!isNaN(dl) && Date.now()>dl+86400000;
               if(!confirm(`Periksa lagi sebelum mengirim:\n\nNama: ${nama}\nKelas: ${myClass||'-'}\nTugas: ${t.j}\nJawaban: ${jawaban?jawaban.length+' karakter':'-'}\nFile: ${file?file.name:'-'}${telat?'\n\n⚠️ Melewati deadline — akan ditandai TERLAMBAT.':''}\n\nKirim sekarang?`)) return;
-              let f=null; try{f=await readFile(file);}catch(e){return alert(e.message);}
+              const send=w.querySelector('#xS'), cancel=w.querySelector('#xC'), statEl=w.querySelector('#xStat');
+              const prevTxt=send.textContent; send.disabled=true; cancel.disabled=true;
+              send.textContent=file?'Mengompres…':'Mengirim…';
+              if(statEl){ statEl.style.color='#0369a1'; statEl.textContent=file?`⏳ Menyiapkan berkas "${file.name}"…`:'⏳ Mengirim jawaban…'; }
+              await new Promise(r=>setTimeout(r,0));
+              let f=null;
+              try{ f=await readFile(file); }
+              catch(e){ send.disabled=false; cancel.disabled=false; send.textContent=prevTxt; if(statEl)statEl.textContent=''; return alert(e.message); }
               const kode='TG-'+Date.now().toString(36).toUpperCase().slice(-6);
-              let entry; try{ entry = Guard.stampSubmission({userId:'me',nama,jawaban,f,kode,terlambat:telat,ts:new Date().toLocaleString('id-ID')}); }catch(_){ return; }
-              const send=w.querySelector('#xS');send.disabled=true;
-              const sent=await Activity.submit('tugas',String(i),entry);send.disabled=false;
-              if(!sent)return;
+              let entry; try{ entry = Guard.stampSubmission({userId:'me',nama,jawaban,f,kode,terlambat:telat,ts:new Date().toLocaleString('id-ID')}); }catch(_){ send.disabled=false; cancel.disabled=false; send.textContent=prevTxt; if(statEl)statEl.textContent=''; return; }
+              const sent=await Activity.submit('tugas',String(i),entry,(p)=>{
+                if(p && typeof p.pct==='number'){
+                  send.textContent=p.pct>=100?'Menyimpan…':`Mengunggah ${p.pct}%`;
+                  if(statEl) statEl.textContent=p.pct>=100?'⏳ Menyimpan bukti pengumpulan…':`⏳ Mengunggah berkas… ${p.pct}%`;
+                }
+              });
+              send.disabled=false; cancel.disabled=false; send.textContent=prevTxt;
+              if(!sent){ if(statEl){ statEl.style.color='#b91c1c'; statEl.textContent='⚠️ Gagal mengirim — silakan coba lagi.'; } return; }
               w.remove(); draw();
               alert(`✅ Tugas berhasil dikirim & tervalidasi!\n\nKode bukti: ${kode}\nWaktu: ${entry.ts}${telat?'\nStatus: Terlambat':''}\n\nSimpan kode ini sebagai bukti pengumpulan.`);
             };
@@ -1892,7 +1989,8 @@
               <input class="fp-input" id="ll" placeholder="Link (opsional)" style="flex:1;min-width:220px"/>
               ${upOk?`<input type="file" id="lf" class="fp-input" style="width:220px"/>`:''}
               <button class="fp-btn sm" id="lAdd">+ LKPD</button>
-            </div></div>
+            </div>
+            <div id="lStat" style="font-size:12px;color:#475569"></div></div>
           <div class="fp-list">${list.map((x,i)=>{
             const n=(subs()[i]||[]).length;
             return `<div class="fp-item"><div style="flex:1"><div class="t">${esc(x.j)}</div>
@@ -1902,12 +2000,43 @@
               <button class="fp-btn sm ghost" data-v="${i}">${n} pengerjaan</button>
               <button class="fp-btn sm danger" data-d="${i}">Hapus</button></div></div>`;
           }).join('')||'<div class="fp-empty">Belum ada LKPD.</div>'}</div>`;
-          b.querySelector('#lAdd').onclick=async()=>{
+          b.querySelector('#lAdd').onclick=async(ev)=>{
+            const btn=ev.currentTarget;
             const j=b.querySelector('#lj').value.trim(); if(!j) return alert('Judul wajib');
             const entry={j,k:b.querySelector('#lk').value,desc:b.querySelector('#ldesc').value.trim()};
             const l=b.querySelector('#ll').value.trim(); if(l) entry.l=l;
             const lfEl=b.querySelector('#lf');
-            if(lfEl&&lfEl.files&&lfEl.files[0]){ try{const f=await readFile(lfEl.files[0]); if(f) entry.f=f;}catch(e){return alert(e.message);} }
+            const statEl=b.querySelector('#lStat');
+            if(lfEl&&lfEl.files&&lfEl.files[0]){
+              const rawFile=lfEl.files[0];
+              if(rawFile.size>8*1048576) return alert('Ukuran file maksimal 8 MB.');
+              btn.disabled=true; const prevTxt=btn.textContent; btn.textContent='Mengunggah…';
+              if(statEl){ statEl.style.color='#0369a1'; statEl.textContent=`⏳ Menyiapkan "${rawFile.name}"…`; }
+              try{
+                if(Drive.state().ready){
+                  let upFile=rawFile;
+                  if(/^image\/(jpeg|jpg|png|webp)$/i.test(rawFile.type||'') && rawFile.size>350000){
+                    const comp=await compressImage(rawFile,1280,0.78);
+                    if(comp && comp._blob) upFile=new File([comp._blob],comp.name,{type:'image/jpeg'});
+                    else if(comp && comp.data && comp.data.startsWith('data:')) upFile=new File([await (await fetch(comp.data)).blob()],comp.name,{type:'image/jpeg'});
+                  }
+                  const up=await Drive.upload(upFile, entry.k, (p)=>{
+                    if(p && typeof p.pct==='number'){
+                      btn.textContent=`${p.pct}%`;
+                      if(statEl) statEl.textContent=`⏳ Mengunggah "${upFile.name}" ke Cloud… ${p.pct}%`;
+                    }
+                  });
+                  entry.f={name:up.name,size:up.size,type:up.mimeType,data:up.viewLink,preview:up.previewLink,download:up.downloadLink,id:up.id,drive:!up.firebaseFile,firebaseFile:!!up.firebaseFile};
+                }else{
+                  const f=await readFile(rawFile); if(f) entry.f=f;
+                }
+              }catch(e){
+                btn.disabled=false; btn.textContent=prevTxt;
+                if(statEl){ statEl.style.color='#b91c1c'; statEl.textContent='⚠️ Gagal: '+(e.message||e); }
+                return alert(e.message||e);
+              }
+              btn.disabled=false; btn.textContent=prevTxt;
+            }
             list.push(entry); save(); draw();
           };
           b.querySelectorAll('[data-ed]').forEach(x=>x.onclick=()=>{
@@ -1988,16 +2117,30 @@
               <div style="font-size:12px;color:#64748b;margin-bottom:10px">${esc(x.desc||'')}</div>
               <input class="fp-input" id="sN" placeholder="Nama kamu" style="width:100%;margin-bottom:8px"/>
               <textarea class="fp-input" id="sJ" placeholder="Isi jawaban LKPD..." style="width:100%;min-height:120px;margin-bottom:8px"></textarea>
-              <input type="file" id="sF" class="fp-input" style="width:100%;margin-bottom:12px"/>
+              <input type="file" id="sF" class="fp-input" style="width:100%;margin-bottom:8px"/>
+              <div id="xStat" style="font-size:12px;color:#0369a1;margin-bottom:8px;min-height:16px"></div>
               <div style="display:flex;gap:8px;justify-content:flex-end"><button class="fp-btn sm ghost" id="xC">Batal</button><button class="fp-btn sm" id="xS">Kirim</button></div></div>`;
             document.body.appendChild(w); w.querySelector('#xC').onclick=()=>w.remove();
             w.querySelector('#xS').onclick=async()=>{
               const jawaban=w.querySelector('#sJ').value.trim(); if(!jawaban) return alert('Isi jawaban.');
-              let f=null; try{f=await readFile(w.querySelector('#sF').files[0]);}catch(e){return alert(e.message);}
-              let entry; try{ entry = Guard.stampSubmission({userId:'me',nama:w.querySelector('#sN').value.trim()||'Siswa',jawaban,f,ts:new Date().toLocaleString('id-ID')}); }catch(_){ return; }
-              const send=w.querySelector('#xS');send.disabled=true;
-              const sent=await Activity.submit('lkpd',String(i),entry);send.disabled=false;
-              if(!sent)return;
+              const file=w.querySelector('#sF').files[0];
+              const send=w.querySelector('#xS'), cancel=w.querySelector('#xC'), statEl=w.querySelector('#xStat');
+              const prevTxt=send.textContent; send.disabled=true; cancel.disabled=true;
+              send.textContent=file?'Mengompres…':'Mengirim…';
+              if(statEl){ statEl.style.color='#0369a1'; statEl.textContent=file?`⏳ Menyiapkan berkas "${file.name}"…`:'⏳ Mengirim LKPD…'; }
+              await new Promise(r=>setTimeout(r,0));
+              let f=null;
+              try{ f=await readFile(file); }
+              catch(e){ send.disabled=false; cancel.disabled=false; send.textContent=prevTxt; if(statEl)statEl.textContent=''; return alert(e.message); }
+              let entry; try{ entry = Guard.stampSubmission({userId:'me',nama:w.querySelector('#sN').value.trim()||'Siswa',jawaban,f,ts:new Date().toLocaleString('id-ID')}); }catch(_){ send.disabled=false; cancel.disabled=false; send.textContent=prevTxt; if(statEl)statEl.textContent=''; return; }
+              const sent=await Activity.submit('lkpd',String(i),entry,(p)=>{
+                if(p && typeof p.pct==='number'){
+                  send.textContent=p.pct>=100?'Menyimpan…':`Mengunggah ${p.pct}%`;
+                  if(statEl) statEl.textContent=p.pct>=100?'⏳ Menyimpan LKPD…':`⏳ Mengunggah berkas… ${p.pct}%`;
+                }
+              });
+              send.disabled=false; cancel.disabled=false; send.textContent=prevTxt;
+              if(!sent){ if(statEl){ statEl.style.color='#b91c1c'; statEl.textContent='⚠️ Gagal mengirim — silakan coba lagi.'; } return; }
               w.remove(); draw(); alert('LKPD terkirim ✓');
             };
           });
@@ -3359,13 +3502,17 @@
             let targetFile = file;
             if(/^image\/(jpeg|jpg|png|webp)$/i.test(file.type||'')){
               const comp = await compressImage(file);
-              if(comp && comp.data && comp.data.startsWith('data:')){
+              if(comp && comp._blob){
+                targetFile = new File([comp._blob], comp.name, {type:'image/jpeg'});
+              }else if(comp && comp.data && comp.data.startsWith('data:')){
                 const blob = await (await fetch(comp.data)).blob();
                 targetFile = new File([blob], comp.name, {type:'image/jpeg'});
               }
             }
             const pass = localStorage.getItem('pb.guru.passphrase')||'';
-            await window.colabDb.files.upload(targetFile, b.querySelector('#mbUpCls').value, pass);
+            await window.colabDb.files.upload(targetFile, b.querySelector('#mbUpCls').value, pass, (p)=>{
+              if(p && typeof p.pct==='number') msg.textContent=`⏳ Mengunggah "${targetFile.name}" ke Cloud… ${p.pct}%`;
+            });
             msg.textContent='✅ Berhasil diunggah ke Cloud!';
             setTimeout(()=>FEATURES.mediaBank.render(b), 500);
           }catch(e){ msg.textContent='⚠️ Gagal: '+(e.message||e); }
@@ -3613,6 +3760,9 @@
           return;
         }
         if(ROLE==='murid' && (feat==='tugas'||feat==='lkpd'||feat==='quiz'||feat==='nilai')){
+          const isFbReady = !!(window.firebaseDb && window.firebaseDb.isReady());
+          const hasCache = localStorage.getItem('pb.guru.remote_catalog_synced')==='1' || LS.get('pb.guru.materi',[]).length>0 || LS.get('pb.guru.tugas',[]).length>0;
+          if(isFbReady && hasCache){ open(feat); return; }
           const body=document.getElementById('fpB');
           body.innerHTML='<div class="fp-empty">Memuat data kelas…</div>';
           Promise.all([SharedCatalog.pull(),Activity.pull()]).then(()=>open(feat));

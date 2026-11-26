@@ -19,8 +19,13 @@
   const DEFAULT_GURU_HASH = '0aa877dd5ee9ef38eaaae498e70def2384f8acfaf06bd4f92a7c49184f31ccb7';
   const DEFAULT_ADMIN_HASH = 'd4fa7af527597793f94e518b0aa8c37f91c2d78ab26019e7cbd4d3f9e7a01019';
   const FIREBASE_SDK_BASE = 'https://www.gstatic.com/firebasejs/11.6.0/';
-  const CHUNK_BYTES = 340000; // ~454KB base64 per chunk doc (safely < 1MB Firestore limit)
+  const CHUNK_BYTES = 240000; // ~320KB base64 per chunk doc (aman di bawah limit batch 10MB & rule 700KB)
+  const BATCH_CHUNK_LIMIT = 6; // maks ~1.9MB per commit agar stabil & cepat di jaringan mobile
+  const MAX_PARALLEL_BATCHES = 2;
+  const OFFLOAD_MIN_CHARS = 45000; // ekstrak lampiran >=45KB ke portal_files agar dokumen submission/katalog tetap ringan
   const MAX_FILE_BYTES = 8 * 1024 * 1024; // 8 MB max per attachment
+  let cachedActivitySnapshot = null;
+  let cachedActivityAt = 0;
 
   function isValidConfig(cfg) {
     return Boolean(cfg && typeof cfg === 'object' && String(cfg.apiKey || '').trim() && String(cfg.projectId || '').trim());
@@ -35,7 +40,7 @@
     try {
       const direct = JSON.parse(txt);
       if (isValidConfig(direct)) return direct;
-    } catch (_) {}
+    } catch (_) { }
 
     // Support URL-safe base64 from ?fb=
     if (!txt.includes('{') && /^[A-Za-z0-9+/_=-]{20,}$/.test(txt)) {
@@ -44,7 +49,7 @@
         const decoded = decodeURIComponent(escape(atob(b64)));
         const obj = JSON.parse(decoded);
         if (isValidConfig(obj)) return obj;
-      } catch (_) {}
+      } catch (_) { }
     }
 
     // Extract {...} block from JS snippet (`const firebaseConfig = { ... };`)
@@ -63,7 +68,7 @@
       try {
         const obj = JSON.parse(body);
         if (isValidConfig(obj)) return obj;
-      } catch (_) {}
+      } catch (_) { }
     }
     return null;
   }
@@ -96,7 +101,7 @@
     try {
       if (tok) localStorage.setItem(TOKEN_KEY, String(tok));
       else localStorage.removeItem(TOKEN_KEY);
-    } catch (_) {}
+    } catch (_) { }
   }
 
   // Allow 1-click connection via ?fb=<base64-json> or ?fb=reset
@@ -119,12 +124,12 @@
       const nextUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '') + window.location.hash;
       window.history.replaceState(null, '', nextUrl);
     }
-  } catch (_) {}
+  } catch (_) { }
 
   let activeConfig = null;
   try {
     activeConfig = parseConfigInput(window.__FIREBASE_CONFIG__ || explicitUrlConfig || localStorage.getItem(CONFIG_LS_KEY) || '');
-  } catch (_) {}
+  } catch (_) { }
 
   let sdkCache = null;
   let dbInstance = null;
@@ -142,11 +147,11 @@
         const valid = parseConfigInput(cfg);
         if (valid) {
           activeConfig = pickConfigFields(valid);
-          try { localStorage.setItem(CONFIG_LS_KEY, JSON.stringify(activeConfig)); } catch (_) {}
+          try { localStorage.setItem(CONFIG_LS_KEY, JSON.stringify(activeConfig)); } catch (_) { }
           return activeConfig;
         }
       }
-    } catch (_) {}
+    } catch (_) { }
     return null;
   })();
 
@@ -270,7 +275,7 @@
         const { db, fs } = await ensureFirestore();
         const hashes = await getSecurityHashes(db, fs);
         salt = hashes.jwtSalt || hashes.adminHash || DEFAULT_ADMIN_HASH;
-      } catch (_) {}
+      } catch (_) { }
     }
     return sha256Hex('pb-firebase-jwt-v2:' + pid + ':' + (salt || DEFAULT_ADMIN_HASH));
   }
@@ -323,7 +328,7 @@
       return out;
     }
     const payload = { guruHash: DEFAULT_GURU_HASH, adminHash: DEFAULT_ADMIN_HASH, updatedAt: new Date().toISOString() };
-    try { await fs.setDoc(ref, payload); } catch (_) {}
+    try { await fs.setDoc(ref, payload); } catch (_) { }
     return {
       guruHash: DEFAULT_GURU_HASH,
       adminHash: DEFAULT_ADMIN_HASH,
@@ -405,7 +410,7 @@
     return { mime: m[1] || 'application/octet-stream', bytes: base64ToBytes(m[2]) };
   }
 
-  async function storeBinaryFile(db, fs, name, mime, bytes, kelas) {
+  async function storeBinaryFile(db, fs, name, mime, bytes, kelas, onProgress) {
     if (bytes.length > MAX_FILE_BYTES) {
       throw new Error('Berkas terlalu besar (maksimal 8 MB per lampiran di Firebase Firestore).');
     }
@@ -415,7 +420,52 @@
     const safeName = String(name || 'materi').replace(/["\\\r\n/]/g, '_');
     const chunkCount = Math.max(1, Math.ceil(bytes.length / CHUNK_BYTES));
     const createdAt = new Date().toISOString();
+    const notifyProgress = (doneChunks) => {
+      if (typeof onProgress === 'function') {
+        const pct = Math.min(96, Math.max(4, Math.round((doneChunks / chunkCount) * 95)));
+        try { onProgress({ phase: 'chunks', done: doneChunks, total: chunkCount, pct }); } catch (_) {}
+      }
+    };
+    notifyProgress(0);
 
+    // Pecah chunk menjadi batch kecil (<=6 chunk / ~1.9MB) lalu kirim paralel terbatas agar tidak kena timeout batch 10MB
+    const groups = [];
+    for (let start = 0; start < chunkCount; start += BATCH_CHUNK_LIMIT) {
+      groups.push({ start, end: Math.min(chunkCount, start + BATCH_CHUNK_LIMIT) });
+    }
+    let completedChunks = 0;
+    let cursor = 0;
+    const commitGroup = async (g) => {
+      const writeOnce = async () => {
+        const batch = fs.writeBatch(db);
+        for (let idx = g.start; idx < g.end; idx++) {
+          const slice = bytes.subarray(idx * CHUNK_BYTES, (idx + 1) * CHUNK_BYTES);
+          batch.set(fs.doc(db, 'portal_files', fileId, 'chunks', String(idx)), {
+            idx,
+            data_b64: bytesToBase64(slice)
+          });
+        }
+        await batch.commit();
+      };
+      try {
+        await writeOnce();
+      } catch (firstErr) {
+        // Retry 1x bila koneksi seluler/sekolah sempat putus sesaat
+        await new Promise((r) => setTimeout(r, 350));
+        await writeOnce();
+      }
+      completedChunks += (g.end - g.start);
+      notifyProgress(completedChunks);
+    };
+    const workerCount = Math.min(MAX_PARALLEL_BATCHES, Math.max(1, groups.length));
+    await Promise.all(Array.from({ length: workerCount }, async () => {
+      while (cursor < groups.length) {
+        const g = groups[cursor++];
+        if (g) await commitGroup(g);
+      }
+    }));
+
+    // Tulis metadata setelah seluruh chunk selesai agar file setengah jadi tak pernah muncul di daftar
     await fs.setDoc(fs.doc(db, 'portal_files', fileId), {
       id: fileId,
       name: safeName,
@@ -425,16 +475,9 @@
       chunk_count: chunkCount,
       created_at: createdAt
     });
-
-    const batch = fs.writeBatch(db);
-    for (let idx = 0; idx < chunkCount; idx++) {
-      const slice = bytes.subarray(idx * CHUNK_BYTES, (idx + 1) * CHUNK_BYTES);
-      batch.set(fs.doc(db, 'portal_files', fileId, 'chunks', String(idx)), {
-        idx,
-        data_b64: bytesToBase64(slice)
-      });
+    if (typeof onProgress === 'function') {
+      try { onProgress({ phase: 'chunks', done: chunkCount, total: chunkCount, pct: 98 }); } catch (_) {}
     }
-    await batch.commit();
 
     return {
       id: fileId,
@@ -448,26 +491,38 @@
     };
   }
 
-  async function offloadAttachmentIfLarge(db, fs, item, kelasHint) {
+  async function offloadAttachmentIfLarge(db, fs, item, kelasHint, onProgress) {
     if (!item || typeof item !== 'object' || !item.f || typeof item.f !== 'object') return item;
     const f = item.f;
-    if (typeof f.data === 'string' && f.data.startsWith('data:') && f.data.length > 120000) {
+    let rawBytes = null;
+    let rawMime = f.type || 'application/octet-stream';
+    if (f._bytes && ArrayBuffer.isView(f._bytes)) {
+      rawBytes = new Uint8Array(f._bytes.buffer, f._bytes.byteOffset, f._bytes.byteLength);
+    } else if (f._blob && typeof f._blob.arrayBuffer === 'function') {
+      const ab = await f._blob.arrayBuffer();
+      rawBytes = new Uint8Array(ab);
+      if (f._blob.type) rawMime = f._blob.type;
+    } else if (typeof f.data === 'string' && f.data.startsWith('data:') && f.data.length > OFFLOAD_MIN_CHARS) {
       const parsed = dataUrlToBytes(f.data);
       if (parsed) {
-        const up = await storeBinaryFile(db, fs, f.name || 'lampiran', parsed.mime || f.type, parsed.bytes, kelasHint || item.k || 'ALL');
-        return Object.assign({}, item, {
-          f: {
-            id: up.id,
-            name: up.name,
-            size: up.size,
-            type: up.mimeType,
-            firebaseFile: true,
-            data: up.viewLink,
-            preview: up.previewLink,
-            download: up.downloadLink
-          }
-        });
+        rawBytes = parsed.bytes;
+        rawMime = parsed.mime || rawMime;
       }
+    }
+    if (rawBytes) {
+      const up = await storeBinaryFile(db, fs, f.name || 'lampiran', rawMime, rawBytes, kelasHint || item.k || 'ALL', onProgress);
+      return Object.assign({}, item, {
+        f: {
+          id: up.id,
+          name: up.name,
+          size: up.size,
+          type: up.mimeType,
+          firebaseFile: true,
+          data: up.viewLink,
+          preview: up.previewLink,
+          download: up.downloadLink
+        }
+      });
     }
     return item;
   }
@@ -527,34 +582,65 @@
   }
 
   // ── Activity & Submissions Operations ──
-  async function readActivity(db, fs) {
+  function buildActivityFromSnaps(subSnap, attSnap) {
     const out = { tugas: {}, lkpd: {}, quiz: {}, absensi: {}, updatedAt: undefined };
+    if (subSnap && typeof subSnap.forEach === 'function') {
+      subSnap.forEach((docSnap) => {
+        const d = docSnap.data() || {};
+        const jenis = d.jenis;
+        const itemKey = String(d.itemKey ?? '').trim();
+        if (!['tugas', 'lkpd', 'quiz'].includes(jenis) || !itemKey) return;
+        let entry = d.entry || null;
+        if (!entry && typeof d.entryJson === 'string') {
+          try { entry = JSON.parse(d.entryJson); } catch (_) { }
+        }
+        if (!entry || typeof entry !== 'object') return;
+        out[jenis][itemKey] = out[jenis][itemKey] || [];
+        out[jenis][itemKey].push(entry);
+      });
+    }
+    if (attSnap && typeof attSnap.forEach === 'function') {
+      attSnap.forEach((docSnap) => {
+        const d = docSnap.data() || {};
+        const k = String(d.key || docSnap.id);
+        let val = d.data;
+        if (val === undefined && typeof d.dataJson === 'string') {
+          try { val = JSON.parse(d.dataJson); } catch (_) { }
+        }
+        if (val !== undefined) out.absensi[k] = val;
+      });
+    }
+    return out;
+  }
+
+  function cloneActivity(act) {
+    try { return JSON.parse(JSON.stringify(act || { tugas: {}, lkpd: {}, quiz: {}, absensi: {} })); }
+    catch (_) { return { tugas: {}, lkpd: {}, quiz: {}, absensi: {} }; }
+  }
+
+  function mergeSubmissionIntoCache(jenis, itemKey, uid, entry) {
+    if (!cachedActivitySnapshot) return null;
+    cachedActivitySnapshot[jenis] = cachedActivitySnapshot[jenis] || {};
+    const list = Array.isArray(cachedActivitySnapshot[jenis][itemKey])
+      ? cachedActivitySnapshot[jenis][itemKey].slice()
+      : [];
+    const at = list.findIndex((s) => s && String(s.userId || s.nis || '') === uid);
+    if (at >= 0) list[at] = Object.assign({}, list[at], entry);
+    else list.push(entry);
+    cachedActivitySnapshot[jenis][itemKey] = list;
+    cachedActivitySnapshot.updatedAt = new Date().toISOString();
+    cachedActivityAt = Date.now();
+    return cloneActivity(cachedActivitySnapshot);
+  }
+
+  async function readActivity(db, fs) {
     const [subSnap, attSnap] = await Promise.all([
       fs.getDocs(fs.collection(db, 'portal_submissions')),
       fs.getDocs(fs.collection(db, 'portal_attendance'))
     ]);
-    subSnap.forEach((docSnap) => {
-      const d = docSnap.data() || {};
-      const jenis = d.jenis;
-      const itemKey = String(d.itemKey ?? '').trim();
-      if (!['tugas', 'lkpd', 'quiz'].includes(jenis) || !itemKey) return;
-      let entry = d.entry || null;
-      if (!entry && typeof d.entryJson === 'string') {
-        try { entry = JSON.parse(d.entryJson); } catch (_) {}
-      }
-      if (!entry || typeof entry !== 'object') return;
-      out[jenis][itemKey] = out[jenis][itemKey] || [];
-      out[jenis][itemKey].push(entry);
-    });
-    attSnap.forEach((docSnap) => {
-      const d = docSnap.data() || {};
-      const k = String(d.key || docSnap.id);
-      let val = d.data;
-      if (val === undefined && typeof d.dataJson === 'string') {
-        try { val = JSON.parse(d.dataJson); } catch (_) {}
-      }
-      if (val !== undefined) out.absensi[k] = val;
-    });
+    const out = buildActivityFromSnaps(subSnap, attSnap);
+    cachedActivitySnapshot = cloneActivity(out);
+    cachedActivityAt = Date.now();
     return out;
   }
 
@@ -684,7 +770,7 @@
         localStorage.setItem('pb.guru.bank', '[]');
         localStorage.removeItem('jenjangOverrides_v1');
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   function applyActivitySnapshot(act) {
@@ -723,13 +809,13 @@
         }
       }
       if (anyRemote) localStorage.setItem('pb.guru.remote_activity_synced', '1');
-    } catch (_) {}
+    } catch (_) { }
   }
 
   function emitFirebaseSync(extraEvent) {
-    try { window.dispatchEvent(new CustomEvent('pb:sync')); } catch (_) {}
+    try { window.dispatchEvent(new CustomEvent('pb:sync')); } catch (_) { }
     if (extraEvent) {
-      try { window.dispatchEvent(new CustomEvent(extraEvent)); } catch (_) {}
+      try { window.dispatchEvent(new CustomEvent(extraEvent)); } catch (_) { }
     }
   }
 
@@ -757,24 +843,40 @@
       applyCatalogSnapshot(cat);
       if (!firstCat) emitFirebaseSync();
       firstCat = false;
-    }, () => {}));
+    }, () => { }));
 
-    const refreshActivityFromDocs = (subDocs, attDocs, notify) => {
-      readActivity(db, fs).then((act) => {
-        applyActivitySnapshot(act);
-        if (notify) emitFirebaseSync();
-      }).catch(() => {});
+    let latestSubSnap = null, latestAttSnap = null;
+    const syncActivitySnapshots = (notify) => {
+      const act = {};
+      if (latestSubSnap) {
+        const subOnly = buildActivityFromSnaps(latestSubSnap, null);
+        act.tugas = subOnly.tugas;
+        act.lkpd = subOnly.lkpd;
+        act.quiz = subOnly.quiz;
+      }
+      if (latestAttSnap) {
+        const attOnly = buildActivityFromSnaps(null, latestAttSnap);
+        act.absensi = attOnly.absensi;
+      }
+      if (latestSubSnap && latestAttSnap) {
+        cachedActivitySnapshot = cloneActivity({ tugas: act.tugas, lkpd: act.lkpd, quiz: act.quiz, absensi: act.absensi });
+        cachedActivityAt = Date.now();
+      }
+      applyActivitySnapshot(act);
+      if (notify) emitFirebaseSync();
     };
 
-    liveUnsubs.push(fs.onSnapshot(fs.collection(db, 'portal_submissions'), () => {
-      refreshActivityFromDocs(null, null, !firstSub);
+    liveUnsubs.push(fs.onSnapshot(fs.collection(db, 'portal_submissions'), (snap) => {
+      latestSubSnap = snap;
+      syncActivitySnapshots(!firstSub);
       firstSub = false;
-    }, () => {}));
+    }, () => { }));
 
-    liveUnsubs.push(fs.onSnapshot(fs.collection(db, 'portal_attendance'), () => {
-      refreshActivityFromDocs(null, null, !firstAtt);
+    liveUnsubs.push(fs.onSnapshot(fs.collection(db, 'portal_attendance'), (snap) => {
+      latestAttSnap = snap;
+      syncActivitySnapshots(!firstAtt);
       firstAtt = false;
-    }, () => {}));
+    }, () => { }));
 
     liveUnsubs.push(fs.onSnapshot(fs.collection(db, 'portal_topics'), (snap) => {
       const ovr = {};
@@ -790,11 +892,11 @@
         try {
           const cur = JSON.parse(localStorage.getItem('jenjangOverrides_v1') || '{}');
           localStorage.setItem('jenjangOverrides_v1', JSON.stringify(Object.assign({}, cur, ovr)));
-        } catch (_) {}
+        } catch (_) { }
       }
       if (!firstTop) emitFirebaseSync('pb:topics');
       firstTop = false;
-    }, () => {}));
+    }, () => { }));
 
     const role = (localStorage.getItem('userRole') || '').replace(/^"|"$/g, '');
     if (role === 'guru' || role === 'admin') {
@@ -810,18 +912,18 @@
             if (list.length > 0) localStorage.setItem('pb.guru.remote_accounts_synced', '1');
             localStorage.setItem('pb.accounts.seeded_v2', '1');
             localStorage.setItem('pb.cached.accounts', JSON.stringify(list));
-          } catch (_) {}
+          } catch (_) { }
         }
         if (!firstAcc) emitFirebaseSync();
         firstAcc = false;
-      }, () => {}));
+      }, () => { }));
     }
   }
 
   function stopRealtimeListeners() {
     while (liveUnsubs.length) {
       const fn = liveUnsubs.pop();
-      try { if (typeof fn === 'function') fn(); } catch (_) {}
+      try { if (typeof fn === 'function') fn(); } catch (_) { }
     }
   }
 
@@ -846,13 +948,13 @@
       dbConfigSignature = '';
       if (!rawInput || (typeof rawInput === 'string' && !rawInput.trim())) {
         activeConfig = null;
-        try { localStorage.removeItem(CONFIG_LS_KEY); } catch (_) {}
+        try { localStorage.removeItem(CONFIG_LS_KEY); } catch (_) { }
         return null;
       }
       const parsed = parseConfigInput(rawInput);
       if (!parsed) throw new Error('Format Firebase Config tidak valid. Pastikan berisi apiKey dan projectId.');
       activeConfig = pickConfigFields(parsed);
-      try { localStorage.setItem(CONFIG_LS_KEY, JSON.stringify(activeConfig)); } catch (_) {}
+      try { localStorage.setItem(CONFIG_LS_KEY, JSON.stringify(activeConfig)); } catch (_) { }
       return activeConfig;
     },
 
@@ -866,7 +968,7 @@
         fs.getDocs(fs.collection(db, 'portal_topics')),
         readCatalog(db, fs)
       ]);
-      startRealtimeListeners().catch(() => {});
+      startRealtimeListeners().catch(() => { });
       return {
         ok: true,
         engine: 'Firebase Firestore',
@@ -895,7 +997,7 @@
         }
         const tok = await createSessionToken(role, role);
         setToken(tok.token);
-        startRealtimeListeners().catch(() => {});
+        startRealtimeListeners().catch(() => { });
         return { ok: true, role, token: tok.token, expiresAt: tok.expiresAt };
       },
 
@@ -909,7 +1011,7 @@
         }
         const tok = await createSessionToken('admin', 'admin');
         setToken(tok.token);
-        startRealtimeListeners().catch(() => {});
+        startRealtimeListeners().catch(() => { });
         return { ok: true, role: 'admin', token: tok.token, expiresAt: tok.expiresAt };
       },
 
@@ -936,7 +1038,7 @@
         await fs.setDoc(ref, { terakhirMasuk: tsMs, updatedAt: new Date().toISOString() }, { merge: true });
         const tok = await createSessionToken('siswa', cleanNis);
         setToken(tok.token);
-        startRealtimeListeners().catch(() => {});
+        startRealtimeListeners().catch(() => { });
         return {
           ok: true,
           role: 'siswa',
@@ -1003,6 +1105,8 @@
       signOut() {
         setToken('');
         stopRealtimeListeners();
+        cachedActivitySnapshot = null;
+        cachedActivityAt = 0;
         try {
           localStorage.removeItem('userRole');
           localStorage.removeItem('pb.murid.nis');
@@ -1011,14 +1115,14 @@
           localStorage.removeItem(PASS_KEY);
           localStorage.removeItem('pb.session.role');
           sessionStorage.clear();
-        } catch (_) {}
+        } catch (_) { }
       }
     },
 
     catalog: {
       async pull() {
         const { db, fs } = await ensureFirestore();
-        startRealtimeListeners().catch(() => {});
+        startRealtimeListeners().catch(() => { });
         return readCatalog(db, fs);
       },
       async publish(payload, passphrase) {
@@ -1031,7 +1135,7 @@
     activity: {
       async pull() {
         const { db, fs } = await ensureFirestore();
-        startRealtimeListeners().catch(() => {});
+        startRealtimeListeners().catch(() => { });
         return readActivity(db, fs);
       },
       async publish(payload, passphrase) {
@@ -1042,13 +1146,18 @@
     },
 
     submissions: {
-      async submit(jenis, itemKey, entry) {
+      async submit(jenis, itemKey, entry, onProgress) {
         if (!['tugas', 'lkpd', 'quiz'].includes(jenis)) throw new Error('Jenis pengumpulan tidak dikenal.');
         const keyStr = String(itemKey ?? '').trim();
         if (!keyStr) throw new Error('Item tidak valid.');
+        const rawAttach = entry && entry.f && (entry.f._bytes || entry.f._blob) ? entry.f : null;
         const safe = cleanSubmission(jenis, entry);
+        if (rawAttach && safe.f && safe.f !== rawAttach) {
+          if (rawAttach._bytes && !safe.f._bytes) Object.defineProperty(safe.f, '_bytes', { value: rawAttach._bytes, enumerable: false, configurable: true, writable: true });
+          if (rawAttach._blob && !safe.f._blob) Object.defineProperty(safe.f, '_blob', { value: rawAttach._blob, enumerable: false, configurable: true, writable: true });
+        }
         const { db, fs } = await ensureFirestore();
-        const cleaned = sanitizeJson(await offloadAttachmentIfLarge(db, fs, safe, safe.kelas));
+        const cleaned = sanitizeJson(await offloadAttachmentIfLarge(db, fs, safe, safe.kelas, onProgress));
         const uid = String(cleaned.userId);
         const docId = `${jenis}__${safeDocId(keyStr)}__${safeDocId(uid)}`;
         await fs.setDoc(fs.doc(db, 'portal_submissions', docId), {
@@ -1061,6 +1170,11 @@
           entryJson: JSON.stringify(cleaned),
           updatedAt: new Date().toISOString()
         });
+        if (typeof onProgress === 'function') {
+          try { onProgress({ phase: 'save', pct: 100 }); } catch (_) {}
+        }
+        const merged = mergeSubmissionIntoCache(jenis, keyStr, uid, cleaned);
+        if (merged) return merged;
         return readActivity(db, fs);
       }
     },
@@ -1081,7 +1195,7 @@
           const nis = String(body.nis || '').trim();
           if (!nis) throw new Error('NIS tidak valid.');
           await fs.deleteDoc(fs.doc(db, 'portal_accounts', safeDocId(nis)));
-          try { localStorage.setItem('pb.guru.remote_accounts_synced', '1'); } catch (_) {}
+          try { localStorage.setItem('pb.guru.remote_accounts_synced', '1'); } catch (_) { }
           return listAccounts(db, fs);
         }
 
@@ -1103,7 +1217,7 @@
             }
             await batch.commit();
           }
-          try { localStorage.setItem('pb.guru.remote_accounts_synced', '1'); } catch (_) {}
+          try { localStorage.setItem('pb.guru.remote_accounts_synced', '1'); } catch (_) { }
           return listAccounts(db, fs);
         }
 
@@ -1117,7 +1231,7 @@
         };
         if (body && body.password) rec.passwordHash = await hashPassword(String(body.password));
         await fs.setDoc(fs.doc(db, 'portal_accounts', safeDocId(nis)), rec, { merge: true });
-        try { localStorage.setItem('pb.guru.remote_accounts_synced', '1'); } catch (_) {}
+        try { localStorage.setItem('pb.guru.remote_accounts_synced', '1'); } catch (_) { }
         return listAccounts(db, fs);
       }
     },
@@ -1179,12 +1293,12 @@
         return { files: out };
       },
 
-      async upload(file, kelas, passphrase) {
+      async upload(file, kelas, passphrase, onProgress) {
         await requireStaff(passphrase);
         if (!file) throw new Error('Berkas tidak valid.');
         const { db, fs } = await ensureFirestore();
         const buf = await file.arrayBuffer();
-        return storeBinaryFile(db, fs, file.name || 'materi', file.type || 'application/octet-stream', new Uint8Array(buf), kelas || 'ALL');
+        return storeBinaryFile(db, fs, file.name || 'materi', file.type || 'application/octet-stream', new Uint8Array(buf), kelas || 'ALL', onProgress);
       },
 
       async resolveBlobUrl(fileRef) {
@@ -1502,6 +1616,8 @@
       KINDS.forEach((k) => catBatch.set(fs.doc(db, 'portal_catalog', k), { items: [], updatedAt: ts }));
       catBatch.set(fs.doc(db, 'portal_catalog', 'meta'), { updatedAt: ts, reset: true });
       await catBatch.commit();
+      cachedActivitySnapshot = { tugas: {}, lkpd: {}, quiz: {}, absensi: {}, updatedAt: ts };
+      cachedActivityAt = Date.now();
       return { ok: true, updatedAt: ts };
     }
   };

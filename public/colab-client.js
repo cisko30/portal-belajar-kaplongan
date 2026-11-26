@@ -323,8 +323,8 @@
     },
 
     submissions: {
-      async submit(jenis, itemKey, entry) {
-        if (fb()) return fb().submissions.submit(jenis, itemKey, entry);
+      async submit(jenis, itemKey, entry, onProgress) {
+        if (fb()) return fb().submissions.submit(jenis, itemKey, entry, onProgress);
         return req('/api/submit', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -381,8 +381,8 @@
         }
         return res;
       },
-      async upload(file, kelas, passphrase) {
-        if (fb()) return fb().files.upload(file, kelas, passphrase);
+      async upload(file, kelas, passphrase, onProgress) {
+        if (fb()) return fb().files.upload(file, kelas, passphrase, onProgress);
         await readyPromise;
         if (!config.sameOrigin && !config.url) throw new Error('Database Cloud belum terhubung.');
         const prefix = config.sameOrigin ? '' : config.url;

@@ -1,5 +1,5 @@
 /* Service Worker — Portal Belajar SMA NU Kaplongan */
-const CACHE_NAME = 'pb-kaplongan-v8';
+const CACHE_NAME = 'pb-kaplongan-v9';
 const SHELL_ASSETS = [
   '/',
   '/portal-belajar.html',
