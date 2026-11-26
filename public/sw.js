@@ -1,5 +1,6 @@
 /* Service Worker — Portal Belajar SMA NU Kaplongan */
-const CACHE_NAME = 'pb-kaplongan-v10';
+const CACHE_NAME = 'pb-kaplongan-v11';
+const NETWORK_TIMEOUT_MS = 4000;
 const SHELL_ASSETS = [
   '/',
   '/portal-belajar.html',
@@ -46,15 +47,55 @@ self.addEventListener('fetch', (event) => {
   ) {
     return;
   }
+  // Ikon & aset statis: cepat dari cache sambil diperbarui di latar
+  if (/^\/icon-.*\.svg$/i.test(url.pathname) || url.pathname === '/favicon.ico') {
+    event.respondWith(
+      caches.open(CACHE_NAME).then((cache) =>
+        cache.match(req).then((cached) => {
+          const fresh = fetch(req).then((res) => {
+            if (res && res.status === 200) cache.put(req, res.clone()).catch(() => {});
+            return res;
+          }).catch(() => cached);
+          return cached || fresh;
+        })
+      )
+    );
+    return;
+  }
+
+  // HTML & JS utama: network-first (selalu up-to-date) dengan batas tunggu 4 detik ke cache saat sinyal lemah
   event.respondWith(
-    fetch(req, { cache: 'no-store' })
-      .then((res) => {
-        if (res && res.status === 200) {
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, clone)).catch(() => {});
-        }
-        return res;
-      })
-      .catch(() => caches.match(req).then((hit) => hit || caches.match('/portal-belajar.html')))
+    new Promise((resolve) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        caches.match(req).then((hit) => {
+          if (hit && !settled) {
+            settled = true;
+            resolve(hit);
+          }
+        }).catch(() => {});
+      }, NETWORK_TIMEOUT_MS);
+
+      fetch(req, { cache: 'no-store' })
+        .then((res) => {
+          clearTimeout(timer);
+          if (res && res.status === 200) {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, clone)).catch(() => {});
+          }
+          if (!settled) {
+            settled = true;
+            resolve(res);
+          }
+        })
+        .catch(() => {
+          clearTimeout(timer);
+          if (!settled) {
+            settled = true;
+            caches.match(req).then((hit) => resolve(hit || caches.match('/portal-belajar.html')));
+          }
+        });
+    })
   );
 });
